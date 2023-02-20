@@ -6,5 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(strut) = temp {
         println!("{strut:?}");
     };
+
+    lumos.auth();
     Ok(())
 }
