@@ -1,8 +1,8 @@
 use firefly_api_driver::Lumos;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut lumos = Lumos::new();
-    lumos.build("fuck", "yeah").await;
+    lumos.attach("nlcssingapore", "test");
+    println!("{:?}", lumos);
     Ok(())
 }
