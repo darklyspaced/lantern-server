@@ -1,13 +1,11 @@
-use crate::task_filter::task_filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
-use quick_xml::events::Event;
-use quick_xml::reader::Reader;
-use reqwest::blocking::Client;
-use reqwest::header;
+use crate::modules::filter::task_filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
+use quick_xml::{events::Event, reader::Reader};
+use reqwest::{blocking::Client, header};
 use serde_json::Value;
 use std::error::Error;
 use uuid::Uuid;
 
-mod task_filter;
+mod modules;
 
 #[derive(Debug)]
 pub struct Lumos {
@@ -21,22 +19,17 @@ pub struct Lumos {
 fn parse_xml(response: String) -> Vec<String> {
     let mut reader = Reader::from_str(response.as_str());
     reader.trim_text(true);
-
     let (mut txt, mut buf) = (Vec::new(), Vec::new());
 
     loop {
         match reader.read_event_into(&mut buf) {
             Err(e) => panic!("Error at position {} {:?}", reader.buffer_position(), e),
-
             Ok(Event::Eof) => break,
-
             Ok(Event::Text(e)) => txt.push(e.unescape().unwrap().into_owned()),
-
             _ => (),
         }
         buf.clear();
     }
-
     txt
 }
 
@@ -66,7 +59,7 @@ impl<'a> Lumos {
             if txt.len() >= 3 {
                 self.school_code = school_code.to_string();
                 self.app_id = app_id.to_string();
-                self.address = String::from("https://") + &txt[1] + &"/";
+                self.address = String::from("https://") + &txt[1] + "/";
             } else {
                 return Err("School not found!".into());
             }
@@ -93,7 +86,7 @@ impl<'a> Lumos {
             ("app_id", &self.app_id),
         ];
         let url = reqwest::Url::parse_with_params(
-            &((&self.address).to_string() + "Login/api/gettoken"),
+            &(self.address.to_string() + "Login/api/gettoken"),
             params,
         )
         .unwrap();
@@ -108,7 +101,7 @@ impl<'a> Lumos {
             status: CompletionStatus::Todo,
             read: ReadStatus::All,
             sorting: (String::from("DueDate"), Order::Ascending),
-            results: 100,
+            results: 1,
         };
 
         let params = [
@@ -116,7 +109,7 @@ impl<'a> Lumos {
             ("ffauth_secret", &self.secret),
         ];
         let url = reqwest::Url::parse_with_params(
-            &((&self.address).to_string() + "api/v2/taskListing/view/student/tasks/all/filterBy"),
+            &(self.address.to_string() + "api/v2/taskListing/view/student/tasks/all/filterBy"),
             params,
         )
         .unwrap();
@@ -131,9 +124,11 @@ impl<'a> Lumos {
             .text()
             .unwrap();
 
-        let object: Value = serde_json::from_str(&res).unwrap();
+        let mut object: Value = serde_json::from_str(&res).unwrap();
         let object_json = serde_json::to_string_pretty(&object).unwrap();
 
-        println!("{}", object_json);
+        // for task in object["items"] {
+        //     println!("{}", task);
+        // }
     }
 }
