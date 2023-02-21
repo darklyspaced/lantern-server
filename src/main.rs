@@ -8,5 +8,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     lumos.auth();
+    lumos.get_tasks();
     Ok(())
 }

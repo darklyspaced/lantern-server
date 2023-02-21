@@ -1,9 +1,13 @@
+use crate::filter::filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use reqwest::blocking::Client;
 use reqwest::header;
+use serde_json::Value;
 use std::error::Error;
 use uuid::Uuid;
+
+mod filter;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -78,17 +82,8 @@ impl<'a> Lumos {
         let mut headers = header::HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            header::HeaderValue::from_static("ASP.NET_SessionId=oprumwu0migtu2hpsb5jslyl"), // change to be dynamic
+            header::HeaderValue::from_static("ASP.NET_SessionId=oprumwu0migtu2hpsb5jslyl"), // NOTE: change to be dynamic
         );
-
-        // let jar = reqwest::cookie::Jar::default();
-        // jar.add_cookie_str(
-        //     "ASP.NET_SessionId=oprumwu0migtu2hpsb5jslyl",
-        //     &(String::from("https://") + &(self.address) + "Login/api/gettoken")
-        //         .parse::<Url>()
-        //         .unwrap(),
-        // );
-        // println!("{:?}", jar);
 
         let client = Client::builder().default_headers(headers).build().unwrap();
 
@@ -104,7 +99,40 @@ impl<'a> Lumos {
         )
         .unwrap();
 
-        let req = client.get(url).send().unwrap().text().unwrap();
-        println!("{:?}", req);
+        let res = client.get(url).send().unwrap().text().unwrap();
+        let txt = parse_xml(res);
+        self.secret = txt.first().unwrap().to_owned();
+    }
+
+    pub fn get_tasks(&self) {
+        let filter = TaskFilter {
+            status: CompletionStatus::Todo,
+            read: ReadStatus::All,
+            sorting: (String::from("DueDate"), Order::Ascending),
+            results: 100,
+        };
+
+        let params = [
+            ("ffauth_device_id", &self.device_id),
+            ("ffauth_secret", &self.secret),
+        ];
+        let url = reqwest::Url::parse_with_params(
+            &((&self.address).to_string() + "api/v2/taskListing/view/student/tasks/all/filterBy"),
+            params,
+        )
+        .unwrap();
+
+        let filters = filter.to_json();
+        let client = Client::new();
+        let res = client
+            .post(url)
+            .json(&filters[0])
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
+        let object: Value = serde_json::from_str(&res).unwrap();
+        let object_json = serde_json::to_string_pretty(&object).unwrap();
+        println!("{}", object_json);
     }
 }
