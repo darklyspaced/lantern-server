@@ -1,4 +1,4 @@
-use crate::filter::filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
+use crate::task_filter::task_filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use reqwest::blocking::Client;
@@ -7,10 +7,9 @@ use serde_json::Value;
 use std::error::Error;
 use uuid::Uuid;
 
-mod filter;
+mod task_filter;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct Lumos {
     secret: String,
     school_code: String,
@@ -131,8 +130,10 @@ impl<'a> Lumos {
             .unwrap()
             .text()
             .unwrap();
+
         let object: Value = serde_json::from_str(&res).unwrap();
         let object_json = serde_json::to_string_pretty(&object).unwrap();
+
         println!("{}", object_json);
     }
 }

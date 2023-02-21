@@ -1,4 +1,4 @@
-pub mod filter {
+pub mod task_filter {
     use serde::Deserialize;
     use std::cmp::min;
 
@@ -53,12 +53,11 @@ pub mod filter {
         pub fn to_json(&self) -> Vec<JSONTaskFilter> {
             let mut filters: Vec<JSONTaskFilter> = vec![];
             let pages: u32 = (self.results - 1) / 50;
-            for _ in 1..pages + 2 {
+            for page in 0..pages + 1 {
                 let pre_json = JSONTaskFilter {
                     ownerType: String::from("OnlySetters"),
-                    page: 0,
-                    pageSize: 1,
-                    // min(self.results - 50 * page, 50)
+                    page,
+                    pageSize: min(self.results - 50 * page, 50),
                     archiveStatus: String::from("All"),
                     completionStatus: match self.status {
                         CompletionStatus::Todo => String::from("Todo"),
