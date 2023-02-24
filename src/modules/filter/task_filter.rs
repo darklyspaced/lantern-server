@@ -70,7 +70,7 @@ impl TaskFilter {
                 },
                 markingStatus: String::from("All"),
                 sortingCriteria: vec![Sorting {
-                    column: (&self.sorting.0).to_owned(),
+                    column: self.sorting.0.to_owned(),
                     order: match self.sorting.1 {
                         Order::Ascending => String::from("Ascending"),
                         Order::Descending => String::from("Descending"),

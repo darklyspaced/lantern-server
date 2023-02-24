@@ -1,7 +1,9 @@
+#![warn(rust_2018_idioms)]
+use crate::modules::filter::serialise_res::{Source, Task};
 use crate::modules::filter::task_filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
 use quick_xml::{events::Event, reader::Reader};
 use reqwest::{blocking::Client, header};
-use serde_json::Value;
+// use serde_json::Value;
 use std::error::Error;
 use uuid::Uuid;
 
@@ -35,7 +37,7 @@ fn parse_xml(response: String) -> Vec<String> {
 
 impl<'a> Lumos {
     // declares Lumos
-    pub fn new() -> Lumos {
+    pub fn new() -> Self {
         Lumos {
             school_code: String::from(""),
             app_id: String::from(""),
@@ -101,7 +103,7 @@ impl<'a> Lumos {
             status: CompletionStatus::Todo,
             read: ReadStatus::All,
             sorting: (String::from("DueDate"), Order::Ascending),
-            results: 1,
+            results: 50,
         };
 
         let params = [
@@ -124,11 +126,26 @@ impl<'a> Lumos {
             .text()
             .unwrap();
 
-        let mut object: Value = serde_json::from_str(&res).unwrap();
-        let object_json = serde_json::to_string_pretty(&object).unwrap();
+        // let mut object: Value = serde_json::from_str(&res).unwrap();
+        // let object_json = serde_json::to_string_pretty(&object).unwrap();
 
-        // for task in object["items"] {
-        //     println!("{}", task);
-        // }
+        // println!("{}", object_json);
+
+        let parsed_res: Task = serde_json::from_str(&res).unwrap();
+        let items = parsed_res.items.unwrap();
+
+        for item in items.iter() {
+            let source = item.task_source.as_ref().unwrap();
+            match source {
+                Source::Ff => println!("{:?}", item),
+                _ => (),
+            }
+        }
+    }
+}
+
+impl Default for Lumos {
+    fn default() -> Self {
+        Self::new()
     }
 }
