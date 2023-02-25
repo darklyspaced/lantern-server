@@ -1,13 +1,17 @@
 #![warn(rust_2018_idioms)]
-use crate::modules::filter::serialise_res::{Source, Task};
-use crate::modules::filter::task_filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
+use crate::modules::filter::serialise_res::Task;
+use crate::modules::filter::task_filter::TaskFilter;
+use modules::filter::serialise_res::Item;
 use quick_xml::{events::Event, reader::Reader};
 use reqwest::{blocking::Client, header};
 // use serde_json::Value;
 use std::error::Error;
 use uuid::Uuid;
 
-mod modules;
+// HACK: used blocking requests instead of async
+// TODO: change to make client once and persist
+
+pub mod modules;
 
 #[derive(Debug)]
 pub struct Lumos {
@@ -16,6 +20,7 @@ pub struct Lumos {
     device_id: String,
     app_id: String,
     address: String,
+    pub tasks: Vec<Item>,
 }
 
 fn parse_xml(response: String) -> Vec<String> {
@@ -44,6 +49,7 @@ impl<'a> Lumos {
             device_id: Uuid::new_v4().to_string(),
             secret: String::from(""),
             address: String::from(""),
+            tasks: vec![],
         }
     }
 
@@ -98,14 +104,7 @@ impl<'a> Lumos {
         self.secret = txt.first().unwrap().to_owned();
     }
 
-    pub fn get_tasks(&self) {
-        let filter = TaskFilter {
-            status: CompletionStatus::Todo,
-            read: ReadStatus::All,
-            sorting: (String::from("DueDate"), Order::Ascending),
-            results: 50,
-        };
-
+    pub fn get_tasks(&mut self, filter: TaskFilter) {
         let params = [
             ("ffauth_device_id", &self.device_id),
             ("ffauth_secret", &self.secret),
@@ -126,20 +125,26 @@ impl<'a> Lumos {
             .text()
             .unwrap();
 
-        // let mut object: Value = serde_json::from_str(&res).unwrap();
-        // let object_json = serde_json::to_string_pretty(&object).unwrap();
+        let serialised_response: Task = serde_json::from_str(&res).unwrap();
+        let items = serialised_response.items.unwrap();
 
-        // println!("{}", object_json);
+        if let Some(ref source) = filter.source {
+            // if: there is a desired task_source filter
+            let parsed_items = items
+                .into_iter()
+                .filter(|item| {
+                    let curr_source = item.task_source.as_ref().unwrap();
+                    if source == curr_source {
+                        return true;
+                    }
+                    false
+                })
+                .collect::<Vec<Item>>();
 
-        let parsed_res: Task = serde_json::from_str(&res).unwrap();
-        let items = parsed_res.items.unwrap();
-
-        for item in items.iter() {
-            let source = item.task_source.as_ref().unwrap();
-            match source {
-                Source::Ff => println!("{:?}", item),
-                _ => (),
-            }
+            self.tasks = parsed_items;
+        } else {
+            // else: return all
+            self.tasks = items;
         }
     }
 }

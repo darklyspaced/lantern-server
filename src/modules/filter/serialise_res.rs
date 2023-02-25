@@ -1,19 +1,6 @@
-// Example code that deserializes and serializes the model.
-// extern crate serde;
-// #[macro_use]
-// extern crate serde_derive;
-// extern crate serde_json;
-//
-// use generated_module::Welcome;
-//
-// fn main() {
-//     let json = r#"{"answer": 42}"#;
-//     let model: Welcome = serde_json::from_str(&json).unwrap();
-// }
-
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Task {
     #[serde(rename = "aggregateOffsets")]
     pub aggregate_offsets: Option<AggregateOffsets>,
@@ -175,7 +162,7 @@ pub struct Setter {
     pub sort_key: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum Source {
     #[serde(rename = "FF")]
     Ff,

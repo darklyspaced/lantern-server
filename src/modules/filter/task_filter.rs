@@ -1,3 +1,4 @@
+use super::serialise_res::Source;
 use serde::Deserialize;
 use std::cmp::min;
 
@@ -27,6 +28,7 @@ pub struct TaskFilter {
     pub read: ReadStatus,
     pub sorting: (String, Order), // String = DueDate or SetDate; bool is True or False
     pub results: u32,             // no. of tasks to retrieve
+    pub source: Option<Source>,   // Google Classroom or Firefly or Both
 }
 
 #[derive(serde::Serialize, Deserialize)]
