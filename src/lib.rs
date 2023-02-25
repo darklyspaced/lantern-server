@@ -20,6 +20,7 @@ pub struct Lumos {
     device_id: String,
     app_id: String,
     address: String,
+    client: Client,
     pub tasks: Vec<Item>,
 }
 
@@ -49,6 +50,7 @@ impl<'a> Lumos {
             device_id: Uuid::new_v4().to_string(),
             secret: String::from(""),
             address: String::from(""),
+            client: Client::new(),
             tasks: vec![],
         }
     }
@@ -60,7 +62,7 @@ impl<'a> Lumos {
         app_id: &'a str,
     ) -> Result<&Lumos, Box<dyn Error>> {
         let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
-        let res = reqwest::blocking::get(portal + school_code)?.text();
+        let res = self.client.get(portal + school_code).send()?.text();
 
         if let Ok(response) = res {
             let txt = parse_xml(response);
@@ -79,14 +81,6 @@ impl<'a> Lumos {
     }
 
     pub fn auth(&mut self) {
-        let mut headers = header::HeaderMap::new();
-        headers.insert(
-            header::COOKIE,
-            header::HeaderValue::from_static("ASP.NET_SessionId=oprumwu0migtu2hpsb5jslyl"), // NOTE: change to be dynamic
-        );
-
-        let client = Client::builder().default_headers(headers).build().unwrap();
-
         let params = [
             ("ffauth_device_id", &self.device_id),
             ("ffauth_secret", &self.secret),
@@ -99,7 +93,17 @@ impl<'a> Lumos {
         )
         .unwrap();
 
-        let res = client.get(url).send().unwrap().text().unwrap();
+        let res = self
+            .client
+            .get(url)
+            .header(
+                header::COOKIE,
+                header::HeaderValue::from_static("ASP.NET_SessionId=oprumwu0migtu2hpsb5jslyl"),
+            )
+            .send()
+            .unwrap()
+            .text()
+            .unwrap();
         let txt = parse_xml(res);
         self.secret = txt.first().unwrap().to_owned();
     }
@@ -116,8 +120,8 @@ impl<'a> Lumos {
         .unwrap();
 
         let filters = filter.to_json();
-        let client = Client::new();
-        let res = client
+        let res = self
+            .client
             .post(url)
             .json(&filters[0])
             .send()

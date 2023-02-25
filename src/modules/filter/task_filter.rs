@@ -51,6 +51,7 @@ pub struct JSONTaskFilter {
 }
 
 impl TaskFilter {
+    #[allow(dead_code)]
     pub fn to_json(&self) -> Vec<JSONTaskFilter> {
         let mut filters: Vec<JSONTaskFilter> = vec![];
         let pages: u32 = (self.results - 1) / 50;
