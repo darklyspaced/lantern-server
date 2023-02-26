@@ -1,10 +1,6 @@
-use firefly_api_driver::modules::filter::serialise_res::Source;
-use firefly_api_driver::modules::filter::task_filter::{
-    CompletionStatus, Order, ReadStatus, TaskFilter,
-};
-use firefly_api_driver::Lumos;
-
-mod modules;
+use firefly_api_driver::lumos::Lumos;
+use firefly_api_driver::serialise_res::Source;
+use firefly_api_driver::task_filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
 
 fn main() {
     let mut lumos = Lumos::new();
@@ -22,5 +18,5 @@ fn main() {
     } else {
         panic!("Failed to attach to school");
     }
-    println!("{:?}", lumos.tasks);
+    println!("{:#?}", lumos.tasks);
 }
