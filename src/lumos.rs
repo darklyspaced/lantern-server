@@ -1,6 +1,7 @@
 use crate::serialise_res::Item;
 use crate::serialise_res::Task;
 use crate::task_filter::TaskFilter;
+use anyhow::Result;
 use quick_xml::{events::Event, reader::Reader};
 use reqwest::{blocking::Client, header};
 // use serde_json::Value;
@@ -10,7 +11,7 @@ use uuid::Uuid;
 // HACK: used async requests instead of blocking
 
 #[derive(Debug)]
-pub struct Lumos {
+pub struct Firefly {
     secret: String,
     school_code: String,
     device_id: String,
@@ -37,10 +38,9 @@ fn parse_xml(response: String) -> Vec<String> {
     txt
 }
 
-impl<'a> Lumos {
     // declares Lumos
     pub fn new() -> Self {
-        Lumos {
+        Firefly {
             school_code: String::from(""),
             app_id: String::from(""),
             device_id: Uuid::new_v4().to_string(),
@@ -149,7 +149,7 @@ impl<'a> Lumos {
     }
 }
 
-impl Default for Lumos {
+impl Default for Firefly {
     fn default() -> Self {
         Self::new()
     }
