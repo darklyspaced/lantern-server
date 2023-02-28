@@ -4,9 +4,8 @@ use crate::task_filter::TaskFilter;
 use anyhow::Result;
 use quick_xml::{events::Event, reader::Reader};
 use reqwest::{blocking::Client, header};
-// use serde_json::Value;
-use std::error::Error;
 use uuid::Uuid;
+// use serde_json::Value;
 
 // HACK: used async requests instead of blocking
 
@@ -38,6 +37,19 @@ fn parse_xml(response: String) -> Vec<String> {
     txt
 }
 
+fn check_existence(instance: Option<&mut Firefly>, school_code: &str) -> Result<Vec<String>> {
+    let res;
+    let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
+    let url = reqwest::Url::parse(&(portal + school_code))?;
+    if let Some(lumos) = instance {
+        res = lumos.client.get(url).send()?.text()?;
+    } else {
+        res = reqwest::blocking::get(url)?.text()?;
+    }
+    Ok(parse_xml(res))
+}
+
+impl<'a> Firefly {
     // declares Lumos
     pub fn new() -> Self {
         Firefly {
@@ -51,32 +63,50 @@ fn parse_xml(response: String) -> Vec<String> {
         }
     }
 
-    // initialises the struct
+    // attaches to an already existing intergration
     pub fn attach(
         &mut self,
         school_code: &'a str,
         app_id: &'a str,
-    ) -> Result<&Lumos, Box<dyn Error>> {
-        let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
-        let res = self.client.get(portal + school_code).send()?.text();
+        secret: &'a str,
+    ) -> Result<Firefly> {
+        let res = check_existence(None, school_code)?;
+        let address = String::from("https://") + &res[1] + "/";
+        Ok(Firefly {
+            school_code: school_code.to_string(),
+            app_id: app_id.to_string(),
+            device_id: Uuid::new_v4().to_string(),
+            secret: secret.to_string(),
+            address,
+            client: Client::new(),
+            tasks: vec![],
+        })
+    }
 
-        if let Ok(response) = res {
-            let txt = parse_xml(response);
-            if txt.len() >= 3 {
+    // verifies that school exists
+    pub fn verify(
+        &mut self,
+        school_code: &'a str,
+        app_id: &'a str,
+    ) -> Result<&mut Firefly, &'static str> {
+        let response = check_existence(Some(self), school_code);
+        if let Ok(res) = response {
+            if res.len() >= 3 {
                 self.school_code = school_code.to_string();
                 self.app_id = app_id.to_string();
-                self.address = String::from("https://") + &txt[1] + "/";
+                self.address = String::from("https://") + &res[1] + "/";
             } else {
-                return Err("School not found!".into());
+                return Err("School not found!");
             }
         } else {
-            return Err("Request failed".into());
+            return Err("Request failed");
         }
-
         Ok(self)
     }
 
-    pub fn auth(&mut self) {
+    // creates intergration
+    // TODO: Only allow this to be called after new && (attach || verify) have been called
+    pub fn auth(&mut self) -> Result<()> {
         let params = [
             ("ffauth_device_id", &self.device_id),
             ("ffauth_secret", &self.secret),
@@ -86,25 +116,27 @@ fn parse_xml(response: String) -> Vec<String> {
         let url = reqwest::Url::parse_with_params(
             &(self.address.to_string() + "Login/api/gettoken"),
             params,
-        )
-        .unwrap();
+        )?;
 
         let res = self
             .client
             .get(url)
             .header(
                 header::COOKIE,
-                header::HeaderValue::from_static("ASP.NET_SessionId=oprumwu0migtu2hpsb5jslyl"),
+                header::HeaderValue::from_static("ASP.NET_SessionId=l2wkr0lecg4yz2ndqtbbou52"),
             )
-            .send()
-            .unwrap()
-            .text()
-            .unwrap();
+            .send()?
+            .text()?;
+
         let txt = parse_xml(res);
-        self.secret = txt.first().unwrap().to_owned();
+        if let Some(secret) = txt.first() {
+            self.secret = secret.to_owned();
+        }
+        Ok(())
     }
 
-    pub fn get_tasks(&mut self, filter: TaskFilter) {
+    // TODO: Only allow this to be called after auth can been called
+    pub fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
         let params = [
             ("ffauth_device_id", &self.device_id),
             ("ffauth_secret", &self.secret),
@@ -112,24 +144,15 @@ fn parse_xml(response: String) -> Vec<String> {
         let url = reqwest::Url::parse_with_params(
             &(self.address.to_string() + "api/v2/taskListing/view/student/tasks/all/filterBy"),
             params,
-        )
-        .unwrap();
+        )?;
 
         let filters = filter.to_json();
-        let res = self
-            .client
-            .post(url)
-            .json(&filters[0])
-            .send()
-            .unwrap()
-            .text()
-            .unwrap();
+        let res = self.client.post(url).json(&filters[0]).send()?.text()?;
 
         let serialised_response: Task = serde_json::from_str(&res).unwrap();
         let items = serialised_response.items.unwrap();
 
         if let Some(ref source) = filter.source {
-            // if: there is a desired task_source filter
             let parsed_items = items
                 .into_iter()
                 .filter(|item| {
@@ -143,9 +166,9 @@ fn parse_xml(response: String) -> Vec<String> {
 
             self.tasks = parsed_items;
         } else {
-            // else: return all
             self.tasks = items;
         }
+        Ok(())
     }
 }
 
