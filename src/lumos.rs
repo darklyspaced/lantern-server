@@ -5,13 +5,13 @@ use anyhow::Result;
 use quick_xml::{events::Event, reader::Reader};
 use reqwest::{blocking::Client, header};
 use uuid::Uuid;
-// use serde_json::Value;
 
 // HACK: used async requests instead of blocking
 
 #[derive(Debug)]
 pub struct Firefly {
     secret: String,
+    email: String,
     school_code: String,
     device_id: String,
     app_id: String,
@@ -50,7 +50,7 @@ fn check_existence(instance: Option<&mut Firefly>, school_code: &str) -> Result<
 }
 
 impl<'a> Firefly {
-    // declares Lumos
+    // creates empty instance of Firefly; do not have intergation
     pub fn new() -> Self {
         Firefly {
             school_code: String::from(""),
@@ -58,6 +58,7 @@ impl<'a> Firefly {
             device_id: Uuid::new_v4().to_string(),
             secret: String::from(""),
             address: String::from(""),
+            email: String::from(""),
             client: Client::new(),
             tasks: vec![],
         }
@@ -67,6 +68,7 @@ impl<'a> Firefly {
     pub fn attach(
         &mut self,
         school_code: &'a str,
+        email: &'a str,
         app_id: &'a str,
         secret: &'a str,
     ) -> Result<Firefly> {
@@ -77,6 +79,7 @@ impl<'a> Firefly {
             app_id: app_id.to_string(),
             device_id: Uuid::new_v4().to_string(),
             secret: secret.to_string(),
+            email: email.to_string(),
             address,
             client: Client::new(),
             tasks: vec![],
@@ -88,6 +91,7 @@ impl<'a> Firefly {
         &mut self,
         school_code: &'a str,
         app_id: &'a str,
+        email: &'a str,
     ) -> Result<&mut Firefly, &'static str> {
         let response = check_existence(Some(self), school_code);
         if let Ok(res) = response {
@@ -95,6 +99,7 @@ impl<'a> Firefly {
                 self.school_code = school_code.to_string();
                 self.app_id = app_id.to_string();
                 self.address = String::from("https://") + &res[1] + "/";
+                self.email = email.to_string();
             } else {
                 return Err("School not found!");
             }
