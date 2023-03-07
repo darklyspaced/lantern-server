@@ -1,23 +1,37 @@
+#![allow(unused)]
 use crate::serialise_res::Item;
 use crate::serialise_res::Task;
 use crate::task_filter::TaskFilter;
 use anyhow::Result;
+use diesel::pg::PgConnection;
+use diesel::prelude::*;
+use dotenvy::dotenv;
 use quick_xml::{events::Event, reader::Reader};
 use reqwest::{blocking::Client, header};
 use uuid::Uuid;
 
-// HACK: used async requests instead of blocking
+// HACK: used blocking requests instead of async
 
 #[derive(Debug)]
-pub struct Firefly {
-    secret: String,
+pub struct User {
+    connection: Info,
+    daemon: Daemon,
     email: String,
+    pub tasks: Vec<Item>,
+}
+
+#[derive(Debug)]
+struct Info {
     school_code: String,
     device_id: String,
     app_id: String,
-    address: String,
-    client: Client,
-    pub tasks: Vec<Item>,
+    http_endpoint: String,
+    secret: String,
+}
+
+#[derive(Debug)]
+struct Daemon {
+    http_client: Client,
 }
 
 fn parse_xml(response: String) -> Vec<String> {
@@ -37,94 +51,97 @@ fn parse_xml(response: String) -> Vec<String> {
     txt
 }
 
-fn check_existence(instance: Option<&mut Firefly>, school_code: &str) -> Result<Vec<String>> {
+fn get_http_endpoint(instance: &mut User, school_code: &str) -> Result<String> {
     let res;
     let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
     let url = reqwest::Url::parse(&(portal + school_code))?;
-    if let Some(lumos) = instance {
-        res = lumos.client.get(url).send()?.text()?;
-    } else {
-        res = reqwest::blocking::get(url)?.text()?;
-    }
-    Ok(parse_xml(res))
+    res = instance.daemon.http_client.get(url).send()?.text()?;
+    let res = parse_xml(res);
+    Ok(String::from("https://") + &res[1] + "/")
 }
 
-impl<'a> Firefly {
+impl<'a> User {
     // creates empty instance of Firefly; do not have intergation
-    pub fn new() -> Self {
-        Firefly {
-            school_code: String::from(""),
-            app_id: String::from(""),
-            device_id: Uuid::new_v4().to_string(),
-            secret: String::from(""),
-            address: String::from(""),
+    pub async fn new() -> Self {
+        dotenv().ok();
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
+        PgConnection::establish(&database_url)
+            .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+
+        User {
+            daemon: Daemon {
+                http_client: Client::new(),
+            },
+            connection: Info {
+                school_code: String::from(""),
+                app_id: String::from(""),
+                device_id: Uuid::new_v4().to_string(),
+                secret: String::from(""),
+                http_endpoint: String::from(""),
+            },
             email: String::from(""),
-            client: Client::new(),
             tasks: vec![],
         }
     }
 
     // attaches to an already existing intergration
-    pub fn attach(
+    pub async fn attach(
         &mut self,
         school_code: &'a str,
-        email: &'a str,
         app_id: &'a str,
-        secret: &'a str,
-    ) -> Result<Firefly> {
-        let res = check_existence(None, school_code)?;
-        let address = String::from("https://") + &res[1] + "/";
-        Ok(Firefly {
-            school_code: school_code.to_string(),
-            app_id: app_id.to_string(),
-            device_id: Uuid::new_v4().to_string(),
-            secret: secret.to_string(),
-            email: email.to_string(),
-            address,
-            client: Client::new(),
-            tasks: vec![],
-        })
+        email: &'a str,
+    ) -> Result<(), &'static str> {
+        let http_endpoint = get_http_endpoint(self, school_code);
+        if let Ok(endpoint) = http_endpoint {
+            self.connection.http_endpoint = endpoint;
+        } else {
+            return Err("Failed to find school!");
+        }
+        Ok(())
     }
 
     // verifies that school exists
-    pub fn verify(
-        &mut self,
-        school_code: &'a str,
-        app_id: &'a str,
-        email: &'a str,
-    ) -> Result<&mut Firefly, &'static str> {
-        let response = check_existence(Some(self), school_code);
-        if let Ok(res) = response {
-            if res.len() >= 3 {
-                self.school_code = school_code.to_string();
-                self.app_id = app_id.to_string();
-                self.address = String::from("https://") + &res[1] + "/";
-                self.email = email.to_string();
-            } else {
-                return Err("School not found!");
-            }
-        } else {
-            return Err("Request failed");
-        }
-        Ok(self)
-    }
-
+    // TODO: remove once attach encompasses this functionality
+    //
+    // pub fn verify(
+    //     &mut self,
+    //     school_code: &'a str,
+    //     app_id: &'a str,
+    //     email: &'a str,
+    // ) -> Result<&mut Firefly, &'static str> {
+    //     let response = check_existence(Some(self), school_code);
+    //     if let Ok(res) = response {
+    //         if res.len() >= 3 {
+    //             self.school_code = school_code.to_string();
+    //             self.app_id = app_id.to_string();
+    //             self.address = String::from("https://") + &res[1] + "/";
+    //             self.email = email.to_string();
+    //         } else {
+    //             return Err("School not found!");
+    //         }
+    //     } else {
+    //         return Err("Request failed");
+    //     }
+    //     Ok(self)
+    // }
+    //
     // creates intergration
     // TODO: Only allow this to be called after new && (attach || verify) have been called
     pub fn auth(&mut self) -> Result<()> {
         let params = [
-            ("ffauth_device_id", &self.device_id),
-            ("ffauth_secret", &self.secret),
-            ("device_id", &self.device_id),
-            ("app_id", &self.app_id),
+            ("ffauth_device_id", &self.connection.device_id),
+            ("ffauth_secret", &self.connection.secret),
+            ("device_id", &self.connection.device_id),
+            ("app_id", &self.connection.app_id),
         ];
         let url = reqwest::Url::parse_with_params(
-            &(self.address.to_string() + "Login/api/gettoken"),
+            &(self.connection.http_endpoint.to_string() + "Login/api/gettoken"),
             params,
         )?;
 
         let res = self
-            .client
+            .daemon
+            .http_client
             .get(url)
             .header(
                 header::COOKIE,
@@ -135,7 +152,7 @@ impl<'a> Firefly {
 
         let txt = parse_xml(res);
         if let Some(secret) = txt.first() {
-            self.secret = secret.to_owned();
+            self.connection.secret = secret.to_owned();
         }
         Ok(())
     }
@@ -143,16 +160,23 @@ impl<'a> Firefly {
     // TODO: Only allow this to be called after auth can been called
     pub fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
         let params = [
-            ("ffauth_device_id", &self.device_id),
-            ("ffauth_secret", &self.secret),
+            ("ffauth_device_id", &self.connection.device_id),
+            ("ffauth_secret", &self.connection.secret),
         ];
         let url = reqwest::Url::parse_with_params(
-            &(self.address.to_string() + "api/v2/taskListing/view/student/tasks/all/filterBy"),
+            &(self.connection.http_endpoint.to_string()
+                + "api/v2/taskListing/view/student/tasks/all/filterBy"),
             params,
         )?;
 
         let filters = filter.to_json();
-        let res = self.client.post(url).json(&filters[0]).send()?.text()?;
+        let res = self
+            .daemon
+            .http_client
+            .post(url)
+            .json(&filters[0])
+            .send()?
+            .text()?;
 
         let serialised_response: Task = serde_json::from_str(&res).unwrap();
         let items = serialised_response.items.unwrap();
@@ -177,8 +201,8 @@ impl<'a> Firefly {
     }
 }
 
-impl Default for Firefly {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl Default for User {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
