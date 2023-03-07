@@ -16,7 +16,6 @@ use uuid::Uuid;
 pub struct User {
     connection: Info,
     daemon: Daemon,
-    email: String,
     pub tasks: Vec<Item>,
 }
 
@@ -24,6 +23,7 @@ struct Info {
     school_code: String,
     device_id: String,
     app_id: String,
+    email: String,
     http_endpoint: String,
     secret: String,
 }
@@ -60,12 +60,12 @@ fn get_http_endpoint(instance: &mut User, school_code: &str) -> Result<String> {
     Ok(String::from("https://") + &res[1] + "/")
 }
 
-fn create_user(instance: &mut User, email: &str, secret: &str) -> UserPG {
+fn create_user(instance: &mut User, email: &str) -> UserPG {
     use crate::schema::users;
 
     let new_user = NewUserPG {
         email,
-        firefly_secret: secret,
+        firefly_secret: "",
     };
 
     diesel::insert_into(users::table)
@@ -90,11 +90,11 @@ impl<'a> User {
             connection: Info {
                 school_code: String::from(""),
                 app_id: String::from(""),
+                email: String::from(""),
                 device_id: Uuid::new_v4().to_string(),
                 secret: String::from(""),
                 http_endpoint: String::from(""),
             },
-            email: String::from(""),
             tasks: vec![],
         }
     }
@@ -108,22 +108,30 @@ impl<'a> User {
     ) -> Result<(), &'static str> {
         use crate::schema::users::dsl::*; // imports useful aliases for diesel
 
-        create_user(self, temp_email, "test");
-
-        let results = users
-            .filter(crate::schema::users::email.eq("test"))
-            .load::<UserPG>(&mut self.daemon.db)
-            .expect("Error loading emails");
-        for user in results {
-            println!("{}", user.email);
-        }
-
         let http_endpoint = get_http_endpoint(self, school_code);
         if let Ok(endpoint) = http_endpoint {
             self.connection.http_endpoint = endpoint;
+            self.connection.school_code = school_code.to_string();
+            self.connection.app_id = app_id.to_string();
         } else {
             return Err("Failed to find school!");
         }
+
+        let results = users
+            .filter(crate::schema::users::email.eq(temp_email))
+            .load::<UserPG>(&mut self.daemon.db)
+            .expect("Error loading emails");
+
+        if results.len() >= 1 {
+            self.connection.email = temp_email.to_string();
+            // TODO: add phantom data to differentiate between authenticated state and not
+            //authenticated state
+            self.connection.secret = results[0].firefly_secret.clone(); // HACK: used clone :(
+        } else {
+            create_user(self, temp_email);
+            self.connection.email = temp_email.to_string();
+        }
+
         Ok(())
     }
 
