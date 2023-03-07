@@ -1,4 +1,5 @@
 #![allow(unused)]
+use crate::models::{NewUserPG, UserPG};
 use crate::serialise_res::Item;
 use crate::serialise_res::Task;
 use crate::task_filter::TaskFilter;
@@ -12,7 +13,6 @@ use uuid::Uuid;
 
 // HACK: used blocking requests instead of async
 
-#[derive(Debug)]
 pub struct User {
     connection: Info,
     daemon: Daemon,
@@ -20,7 +20,6 @@ pub struct User {
     pub tasks: Vec<Item>,
 }
 
-#[derive(Debug)]
 struct Info {
     school_code: String,
     device_id: String,
@@ -29,9 +28,9 @@ struct Info {
     secret: String,
 }
 
-#[derive(Debug)]
 struct Daemon {
     http_client: Client,
+    db: PgConnection,
 }
 
 fn parse_xml(response: String) -> Vec<String> {
@@ -55,22 +54,38 @@ fn get_http_endpoint(instance: &mut User, school_code: &str) -> Result<String> {
     let res;
     let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
     let url = reqwest::Url::parse(&(portal + school_code))?;
+
     res = instance.daemon.http_client.get(url).send()?.text()?;
     let res = parse_xml(res);
     Ok(String::from("https://") + &res[1] + "/")
 }
 
+fn create_user(instance: &mut User, email: &str, secret: &str) -> UserPG {
+    use crate::schema::users;
+
+    let new_user = NewUserPG {
+        email,
+        firefly_secret: secret,
+    };
+
+    diesel::insert_into(users::table)
+        .values(&new_user)
+        .get_result(&mut instance.daemon.db)
+        .expect("Error creating new user")
+}
+
 impl<'a> User {
     // creates empty instance of Firefly; do not have intergation
-    pub async fn new() -> Self {
+    pub fn new() -> Self {
         dotenv().ok();
         let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
-        PgConnection::establish(&database_url)
+        let db = PgConnection::establish(&database_url)
             .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
 
         User {
             daemon: Daemon {
                 http_client: Client::new(),
+                db,
             },
             connection: Info {
                 school_code: String::from(""),
@@ -85,12 +100,24 @@ impl<'a> User {
     }
 
     // attaches to an already existing intergration
-    pub async fn attach(
+    pub fn attach(
         &mut self,
         school_code: &'a str,
         app_id: &'a str,
-        email: &'a str,
+        temp_email: &'a str,
     ) -> Result<(), &'static str> {
+        use crate::schema::users::dsl::*; // imports useful aliases for diesel
+
+        create_user(self, temp_email, "test");
+
+        let results = users
+            .filter(crate::schema::users::email.eq("test"))
+            .load::<UserPG>(&mut self.daemon.db)
+            .expect("Error loading emails");
+        for user in results {
+            println!("{}", user.email);
+        }
+
         let http_endpoint = get_http_endpoint(self, school_code);
         if let Ok(endpoint) = http_endpoint {
             self.connection.http_endpoint = endpoint;

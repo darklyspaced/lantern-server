@@ -1,21 +1,15 @@
 use anyhow::Result;
 use dotenvy::dotenv;
 use lantern::lumos::User;
-// use lantern::serialise_res::Source;
-// use lantern::task_filter::{CompletionStatus, Order, ReadStatus, TaskFilter};
-// use sqlx::postgres::PgPoolOptions;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // let _db = PgPoolOptions::new()
-    //     .max_connections(5)
-    //     .connect("postgresql://localhost:5432")
-    //     .await?;
-
+fn main() -> Result<()> {
     dotenv().ok();
-    let lumos = User::new();
+    let mut lumos = User::new();
 
-    lumos.await.attach("test", "yes", "what").await.unwrap();
+    lumos
+        .attach("nlcssingapore", "yes", "srohanjd@gmail.com")
+        .unwrap();
+
     // let filter = TaskFilter {
     //     read: ReadStatus::All,
     //     status: CompletionStatus::Todo,
