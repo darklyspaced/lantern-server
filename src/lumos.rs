@@ -1,4 +1,6 @@
 #![allow(unused)]
+use std::thread::panicking;
+
 use crate::models::{NewUserPG, UserPG};
 use crate::serialise_res::Item;
 use crate::serialise_res::Task;
@@ -13,9 +15,10 @@ use uuid::Uuid;
 
 // HACK: used blocking requests instead of async
 
-pub struct User {
+pub struct User<State = UnInit> {
     connection: Info,
     daemon: Daemon,
+    state: std::marker::PhantomData<State>,
     pub tasks: Vec<Item>,
 }
 
@@ -32,6 +35,9 @@ struct Daemon {
     http_client: Client,
     db: PgConnection,
 }
+
+struct UnInit;
+struct Init;
 
 fn parse_xml(response: String) -> Vec<String> {
     let mut reader = Reader::from_str(response.as_str());
@@ -60,7 +66,7 @@ fn get_http_endpoint(instance: &mut User, school_code: &str) -> Result<String> {
     Ok(String::from("https://") + &res[1] + "/")
 }
 
-fn create_user(instance: &mut User, email: &str) -> UserPG {
+fn add_user_to_db(instance: &mut User, email: &str) -> UserPG {
     use crate::schema::users;
 
     let new_user = NewUserPG {
@@ -74,19 +80,77 @@ fn create_user(instance: &mut User, email: &str) -> UserPG {
         .expect("Error creating new user")
 }
 
-impl<'a> User {
+fn auth(instance: &mut User) -> Result<()> {
+    let params = [
+        ("ffauth_device_id", &instance.connection.device_id),
+        ("ffauth_secret", &instance.connection.secret),
+        ("device_id", &instance.connection.device_id),
+        ("app_id", &instance.connection.app_id),
+    ];
+    let url = reqwest::Url::parse_with_params(
+        &(instance.connection.http_endpoint.to_string() + "Login/api/gettoken"),
+        params,
+    )?;
+
+    let res = instance
+        .daemon
+        .http_client
+        .get(url)
+        .header(
+            header::COOKIE,
+            header::HeaderValue::from_static("ASP.NET_SessionId=l2wkr0lecg4yz2ndqtbbou52"),
+        )
+        .send()?
+        .text()?;
+
+    let txt = parse_xml(res);
+    if let Some(secret) = txt.first() {
+        instance.connection.secret = secret.to_owned();
+    }
+    Ok(())
+}
+
+impl<'a> User<UnInit> {
     // creates empty instance of Firefly; do not have intergation
-    pub fn new() -> Self {
+    // pub fn new() -> Self {
+    //     dotenv().ok();
+    //     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
+    //     let db = PgConnection::establish(&database_url)
+    //         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+    //
+    //     User::<UnInit> {
+    //         daemon: Daemon {
+    //             http_client: Client::new(),
+    //             db,
+    //         },
+    //         state: std::marker::PhantomData,
+    //         connection: Info {
+    //             school_code: String::from(""),
+    //             app_id: String::from(""),
+    //             email: String::from(""),
+    //             device_id: Uuid::new_v4().to_string(),
+    //             secret: String::from(""),
+    //             http_endpoint: String::from(""),
+    //         },
+    //         tasks: vec![],
+    //     }
+    // }
+
+    // attaches to an already existing intergration
+    pub fn attach(school_code: &'a str, app_id: &'a str, temp_email: &'a str) -> Self {
+        use crate::schema::users::dsl::*; // imports useful aliases for diesel
+
         dotenv().ok();
         let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
         let db = PgConnection::establish(&database_url)
             .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
 
-        User {
+        let mut user = User::<UnInit> {
             daemon: Daemon {
                 http_client: Client::new(),
                 db,
             },
+            state: std::marker::PhantomData,
             connection: Info {
                 school_code: String::from(""),
                 app_id: String::from(""),
@@ -96,100 +160,29 @@ impl<'a> User {
                 http_endpoint: String::from(""),
             },
             tasks: vec![],
-        }
-    }
+        };
 
-    // attaches to an already existing intergration
-    pub fn attach(
-        &mut self,
-        school_code: &'a str,
-        app_id: &'a str,
-        temp_email: &'a str,
-    ) -> Result<(), &'static str> {
-        use crate::schema::users::dsl::*; // imports useful aliases for diesel
-
-        let http_endpoint = get_http_endpoint(self, school_code);
-        if let Ok(endpoint) = http_endpoint {
-            self.connection.http_endpoint = endpoint;
-            self.connection.school_code = school_code.to_string();
-            self.connection.app_id = app_id.to_string();
+        if let Ok(endpoint) = get_http_endpoint(&mut user, school_code) {
+            user.connection.http_endpoint = endpoint;
+            user.connection.school_code = school_code.to_string();
+            user.connection.app_id = app_id.to_string();
         } else {
-            return Err("Failed to find school!");
+            panic!("Failed to find school from provided school code.");
         }
 
-        let results = users
+        let emails = users
             .filter(crate::schema::users::email.eq(temp_email))
-            .load::<UserPG>(&mut self.daemon.db)
+            .load::<UserPG>(&mut user.daemon.db)
             .expect("Error loading emails");
 
-        if results.len() >= 1 {
-            self.connection.email = temp_email.to_string();
-            // TODO: add phantom data to differentiate between authenticated state and not
-            //authenticated state
-            self.connection.secret = results[0].firefly_secret.clone(); // HACK: used clone :(
+        if emails.is_empty() {
+            add_user_to_db(&mut user, temp_email);
+            auth(&mut user);
         } else {
-            create_user(self, temp_email);
-            self.connection.email = temp_email.to_string();
+            user.connection.secret = emails.first().unwrap().firefly_secret.to_owned();
         }
-
-        Ok(())
-    }
-
-    // verifies that school exists
-    // TODO: remove once attach encompasses this functionality
-    //
-    // pub fn verify(
-    //     &mut self,
-    //     school_code: &'a str,
-    //     app_id: &'a str,
-    //     email: &'a str,
-    // ) -> Result<&mut Firefly, &'static str> {
-    //     let response = check_existence(Some(self), school_code);
-    //     if let Ok(res) = response {
-    //         if res.len() >= 3 {
-    //             self.school_code = school_code.to_string();
-    //             self.app_id = app_id.to_string();
-    //             self.address = String::from("https://") + &res[1] + "/";
-    //             self.email = email.to_string();
-    //         } else {
-    //             return Err("School not found!");
-    //         }
-    //     } else {
-    //         return Err("Request failed");
-    //     }
-    //     Ok(self)
-    // }
-    //
-    // creates intergration
-    // TODO: Only allow this to be called after new && (attach || verify) have been called
-    pub fn auth(&mut self) -> Result<()> {
-        let params = [
-            ("ffauth_device_id", &self.connection.device_id),
-            ("ffauth_secret", &self.connection.secret),
-            ("device_id", &self.connection.device_id),
-            ("app_id", &self.connection.app_id),
-        ];
-        let url = reqwest::Url::parse_with_params(
-            &(self.connection.http_endpoint.to_string() + "Login/api/gettoken"),
-            params,
-        )?;
-
-        let res = self
-            .daemon
-            .http_client
-            .get(url)
-            .header(
-                header::COOKIE,
-                header::HeaderValue::from_static("ASP.NET_SessionId=l2wkr0lecg4yz2ndqtbbou52"),
-            )
-            .send()?
-            .text()?;
-
-        let txt = parse_xml(res);
-        if let Some(secret) = txt.first() {
-            self.connection.secret = secret.to_owned();
-        }
-        Ok(())
+        user.connection.email = temp_email.to_string();
+        user
     }
 
     // TODO: Only allow this to be called after auth can been called
