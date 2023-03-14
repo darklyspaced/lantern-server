@@ -1,4 +1,6 @@
 #![allow(unused)]
+use std::error::Error;
+use std::fmt;
 use std::thread::panicking;
 
 use crate::models::{NewUserPG, UserPG};
@@ -15,29 +17,25 @@ use uuid::Uuid;
 
 // HACK: used blocking requests instead of async
 
-pub struct User<State = UnInit> {
-    connection: Info,
+pub struct User {
+    pub connection: Info,
     daemon: Daemon,
-    state: std::marker::PhantomData<State>,
-    pub tasks: Vec<Item>,
+    tasks: Vec<Item>,
 }
 
-struct Info {
+pub struct Info {
     school_code: String,
     device_id: String,
     app_id: String,
     email: String,
     http_endpoint: String,
-    secret: String,
+    pub secret: String,
 }
 
 struct Daemon {
     http_client: Client,
     db: PgConnection,
 }
-
-struct UnInit;
-struct Init;
 
 fn parse_xml(response: String) -> Vec<String> {
     let mut reader = Reader::from_str(response.as_str());
@@ -71,13 +69,44 @@ fn add_user_to_db(instance: &mut User, email: &str) -> UserPG {
 
     let new_user = NewUserPG {
         email,
-        firefly_secret: "",
+        firefly_secret: &instance.connection.secret,
     };
 
     diesel::insert_into(users::table)
         .values(&new_user)
         .get_result(&mut instance.daemon.db)
         .expect("Error creating new user")
+}
+
+#[derive(Debug)]
+pub enum LanternError {
+    InvalidSessionID, // cannot auth due to invalid session ID
+    Firefly,          // something went wrong interacting with Firefly
+    // FIXME: Decide whether to use Box<> or & to make the size of dyn Error known.
+    Misc(&'static dyn Error), // anything from a database to a dotenvy error (third party errors essentially)
+}
+
+impl Error for LanternError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Misc(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for LanternError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({:?})", {
+            match self {
+                Self::InvalidSessionID => {
+                    String::from("could not auth with firefly; invalid session id")
+                }
+                Self::Firefly => String::from("something went wrong interacting with firefly"),
+                Self::Misc(e) => e.to_string(),
+            }
+        })
+    }
 }
 
 fn auth(instance: &mut User) -> Result<()> {
@@ -105,39 +134,20 @@ fn auth(instance: &mut User) -> Result<()> {
 
     let txt = parse_xml(res);
     if let Some(secret) = txt.first() {
-        instance.connection.secret = secret.to_owned();
-    }
+        if secret != "Invalid token" {
+            instance.connection.secret = secret.to_owned();
+        } else {
+        }
+    };
     Ok(())
 }
 
-impl<'a> User<UnInit> {
-    // creates empty instance of Firefly; do not have intergation
-    // pub fn new() -> Self {
-    //     dotenv().ok();
-    //     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
-    //     let db = PgConnection::establish(&database_url)
-    //         .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
-    //
-    //     User::<UnInit> {
-    //         daemon: Daemon {
-    //             http_client: Client::new(),
-    //             db,
-    //         },
-    //         state: std::marker::PhantomData,
-    //         connection: Info {
-    //             school_code: String::from(""),
-    //             app_id: String::from(""),
-    //             email: String::from(""),
-    //             device_id: Uuid::new_v4().to_string(),
-    //             secret: String::from(""),
-    //             http_endpoint: String::from(""),
-    //         },
-    //         tasks: vec![],
-    //     }
-    // }
-
-    // attaches to an already existing intergration
-    pub fn attach(school_code: &'a str, app_id: &'a str, temp_email: &'a str) -> Self {
+impl<'a> User {
+    pub fn attach(
+        school_code: &'a str,
+        app_id: &'a str,
+        temp_email: &'a str,
+    ) -> Result<User, LanternError> {
         use crate::schema::users::dsl::*; // imports useful aliases for diesel
 
         dotenv().ok();
@@ -145,12 +155,11 @@ impl<'a> User<UnInit> {
         let db = PgConnection::establish(&database_url)
             .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
 
-        let mut user = User::<UnInit> {
+        let mut user = User {
             daemon: Daemon {
                 http_client: Client::new(),
                 db,
             },
-            state: std::marker::PhantomData,
             connection: Info {
                 school_code: String::from(""),
                 app_id: String::from(""),
@@ -176,16 +185,15 @@ impl<'a> User<UnInit> {
             .expect("Error loading emails");
 
         if emails.is_empty() {
-            add_user_to_db(&mut user, temp_email);
             auth(&mut user);
+            add_user_to_db(&mut user, temp_email);
         } else {
             user.connection.secret = emails.first().unwrap().firefly_secret.to_owned();
         }
         user.connection.email = temp_email.to_string();
-        user
+        Ok(user)
     }
 
-    // TODO: Only allow this to be called after auth can been called
     pub fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
         let params = [
             ("ffauth_device_id", &self.connection.device_id),
@@ -228,9 +236,3 @@ impl<'a> User<UnInit> {
         Ok(())
     }
 }
-
-// impl Default for User {
-//     fn default() -> Self {
-//         Self::new()
-//     }
-// }
