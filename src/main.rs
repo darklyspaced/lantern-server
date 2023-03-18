@@ -1,10 +1,10 @@
 use anyhow::Result;
 use dotenvy::dotenv;
-use lantern::lumos::User;
+use lantern::lumos::user::User;
 
 fn main() -> Result<()> {
     dotenv().ok();
-    let lumos = User::attach("nlcssingapore", "testing123", "what@what.com").unwrap();
+    let lumos = User::attach("nlcssingapore", "testing123", "what").unwrap();
     println!("{:?}", lumos.connection.secret);
 
     // let filter = TaskFilter {

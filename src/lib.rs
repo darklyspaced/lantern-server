@@ -1,3 +1,4 @@
+pub mod error;
 pub mod lumos;
 pub mod models;
 pub mod schema;
