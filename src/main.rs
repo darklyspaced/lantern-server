@@ -5,7 +5,8 @@ use lantern::lumos::user::User;
 fn main() -> Result<()> {
     dotenv().ok();
     let lumos = User::attach("nlcssingapore", "testing123", "what").unwrap();
-    println!("{:?}", lumos.connection.secret);
+    println!("{:?}", &lumos.connection.secret);
+    println!("{:?}", &lumos.connection.device_id);
 
     // let filter = TaskFilter {
     //     read: ReadStatus::All,

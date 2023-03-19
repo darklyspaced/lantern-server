@@ -20,7 +20,7 @@ pub struct User {
 
 pub struct Info {
     school_code: String,
-    device_id: String,
+    pub device_id: String,
     app_id: String,
     email: String,
     http_endpoint: String,
@@ -86,7 +86,9 @@ impl<'a> User {
                 panic!("Invalid Firefly SessionID!");
             }
         } else {
-            user.connection.secret = emails.first().unwrap().firefly_secret.to_owned();
+            let data = emails.first().unwrap();
+            user.connection.secret = data.firefly_secret.to_owned();
+            user.connection.device_id = data.device_id.to_owned();
         }
         user.connection.email = user_email.to_string();
         Ok(user)
