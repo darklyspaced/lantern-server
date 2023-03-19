@@ -1,10 +1,9 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    posts (id) {
+    tasks (id) {
         id -> Int4,
-        email -> Varchar,
-        firefly_secret -> Varchar,
+        user_email -> Varchar,
     }
 }
 
@@ -13,7 +12,8 @@ diesel::table! {
         id -> Int4,
         email -> Varchar,
         firefly_secret -> Varchar,
+        device_id -> Varchar,
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(posts, users,);
+diesel::allow_tables_to_appear_in_same_query!(tasks, users,);

@@ -1,5 +1,13 @@
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
-  email VARCHAR NOT NULL,
-  firefly_secret VARCHAR NOT NULL
-)
+  email VARCHAR UNIQUE NOT NULL,
+  firefly_secret VARCHAR NOT NULL,
+device_id VARCHAR NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id INT PRIMARY KEY,
+	user_email VARCHAR NOT NULL,
+  	CONSTRAINT fk_email
+    	FOREIGN KEY (user_email) REFERENCES users(email)
+);

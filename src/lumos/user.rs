@@ -175,6 +175,7 @@ fn add_user_to_db(instance: &mut User, new_email: &str) -> UserPG {
     let new_user = NewUserPG {
         email: new_email,
         firefly_secret: &instance.connection.secret,
+        device_id: &instance.connection.device_id,
     };
 
     diesel::insert_into(users::table)
