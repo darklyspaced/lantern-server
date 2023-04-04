@@ -4,6 +4,8 @@ diesel::table! {
     tasks (id) {
         id -> Int4,
         user_email -> Varchar,
+        local_tasks -> Json,
+        firefly_tasks -> Json,
     }
 }
 
@@ -16,4 +18,7 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(tasks, users,);
+diesel::allow_tables_to_appear_in_same_query!(
+    tasks,
+    users,
+);

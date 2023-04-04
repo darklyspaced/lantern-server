@@ -1,7 +1,8 @@
+use super::task_filter::Source;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct Task {
+pub struct Response {
     #[serde(rename = "aggregateOffsets")]
     pub aggregate_offsets: Option<AggregateOffsets>,
 
@@ -12,7 +13,7 @@ pub struct Task {
     pub has_values: Option<bool>,
 
     #[serde(rename = "items")]
-    pub items: Option<Vec<Item>>,
+    pub items: Option<Vec<Task>>,
 
     #[serde(rename = "toIndex")]
     pub to_index: Option<i64>,
@@ -34,7 +35,7 @@ pub struct AggregateOffsets {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Item {
+pub struct Task {
     #[serde(rename = "addressees")]
     pub addressees: Option<Vec<Addressee>>,
 
@@ -160,13 +161,4 @@ pub struct Setter {
 
     #[serde(rename = "sortKey")]
     pub sort_key: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub enum Source {
-    #[serde(rename = "FF")]
-    Ff,
-
-    #[serde(rename = "GC")]
-    Gc,
 }

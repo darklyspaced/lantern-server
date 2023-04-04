@@ -1,34 +1,44 @@
-use super::serialise_res::Source;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::cmp::min;
 
-#[allow(dead_code)]
 pub enum CompletionStatus {
     Todo,
     DoneOrArchived,
     All,
 }
 
-#[allow(dead_code)]
 pub enum ReadStatus {
     All,
     OnlyRead,
     OnlyUnread,
 }
 
-#[allow(dead_code)]
 pub enum Order {
     Ascending,
     Descending,
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum Source {
+    #[serde(rename = "FF")]
+    Ff,
+
+    #[serde(rename = "GC")]
+    Gc,
+}
+
+pub enum SortBy {
+    DueDate,
+    SetDate,
 }
 
 #[allow(dead_code)]
 pub struct TaskFilter {
     pub status: CompletionStatus,
     pub read: ReadStatus,
-    pub sorting: (String, Order), // String = DueDate or SetDate; bool is True or False
+    pub sorting: (SortBy, Order), // String = DueDate or SetDate; bool is True or False
     pub results: u32,             // no. of tasks to retrieve
-    pub source: Option<Source>,   // Google Classroom or Firefly or Both
+    pub source: Option<Source>,   // Google Classroom or Firefly; sometimes not present -_-
 }
 
 #[derive(serde::Serialize, Deserialize)]
@@ -51,7 +61,6 @@ pub struct JSONTaskFilter {
 }
 
 impl TaskFilter {
-    #[allow(dead_code)]
     pub fn to_json(&self) -> Vec<JSONTaskFilter> {
         let mut filters: Vec<JSONTaskFilter> = vec![];
         let pages: u32 = (self.results - 1) / 50;
@@ -73,7 +82,10 @@ impl TaskFilter {
                 },
                 markingStatus: String::from("All"),
                 sortingCriteria: vec![Sorting {
-                    column: self.sorting.0.to_owned(),
+                    column: match self.sorting.0 {
+                        SortBy::DueDate => String::from("DueDate"),
+                        SortBy::SetDate => String::from("SetDate"),
+                    },
                     order: match self.sorting.1 {
                         Order::Ascending => String::from("Ascending"),
                         Order::Descending => String::from("Descending"),

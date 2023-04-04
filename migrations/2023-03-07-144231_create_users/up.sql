@@ -6,8 +6,10 @@ device_id VARCHAR NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS tasks (
-  id INT PRIMARY KEY,
-	user_email VARCHAR NOT NULL,
+  id SERIAL PRIMARY KEY,
+	user_email VARCHAR UNIQUE NOT NULL,
   	CONSTRAINT fk_email
-    	FOREIGN KEY (user_email) REFERENCES users(email)
+    	FOREIGN KEY (user_email) REFERENCES users(email),
+    local_tasks JSON NOT NULL,
+    firefly_tasks JSON NOT NULL
 );

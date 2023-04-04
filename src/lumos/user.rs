@@ -1,21 +1,21 @@
 use super::parse_xml;
 use crate::error::LanternError;
-use crate::models::{NewUserPG, UserPG};
-use crate::serialise_res::Item;
-use crate::serialise_res::Task;
-use crate::task_filter::TaskFilter;
+use crate::models::{NewTask, NewUserPG, UserPG};
+use crate::serialise_res::{Response, Task};
+use crate::task_filter::*;
 
 use anyhow::Result;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use dotenvy::dotenv;
 use reqwest::{blocking::Client, header};
+use serde_json::json;
 use uuid::Uuid;
 
 pub struct User {
     pub connection: Info,
     daemon: Daemon,
-    tasks: Vec<Item>,
+    pub tasks: Vec<Task>,
 }
 
 pub struct Info {
@@ -33,6 +33,7 @@ struct Daemon {
 }
 
 impl<'a> User {
+    /// Authenticates user with Firefly
     pub fn attach(
         school_code: &'a str,
         app_id: &'a str,
@@ -71,11 +72,11 @@ impl<'a> User {
             user.connection.school_code = school_code.to_string();
             user.connection.app_id = app_id.to_string();
         } else {
-            panic!("Failed to find school from provided school code.");
+            return Err(LanternError::SchoolCode);
         };
 
         let emails = users
-            .filter(crate::schema::users::email.eq(user_email))
+            .filter(email.eq(user_email))
             .load::<UserPG>(&mut user.daemon.db)
             .expect("Error loading emails");
 
@@ -83,7 +84,7 @@ impl<'a> User {
             if let Ok(()) = auth(&mut user) {
                 add_user_to_db(&mut user, user_email);
             } else {
-                panic!("Invalid Firefly SessionID!");
+                return Err(LanternError::InvalidSessionID);
             }
         } else {
             let data = emails.first().unwrap();
@@ -93,6 +94,34 @@ impl<'a> User {
         user.connection.email = user_email.to_string();
         Ok(user)
     }
+
+    /// Gets tasks from Firefly based on authentication done previously
+    ///
+    /// This function querys the Firefly API with a POST request to determine how to filter the
+    /// tasks that it returns. You can customise this filter with [`TaskFilter`]. The returned JSON
+    /// is parsed using [`serde_json`] and stored in connection.tasks.
+    ///
+    /// ```
+    /// use dotenvy::dotenv;
+    /// use lantern::prelude::*;
+    ///
+    /// dotenv().ok();
+    /// let mut lumos = User::attach("nlcssingapore", "avagarde_client", "sample@email.com").unwrap();
+    ///
+    /// let filter = TaskFilter {
+    ///     read: ReadStatus::All,
+    ///     status: CompletionStatus::Todo,
+    ///     sorting: (SortBy::DueDate, Order::Ascending),
+    ///     results: 50,
+    ///     source: Some(Source::Ff),
+    /// };
+    ///
+    /// lumos
+    ///     .get_tasks(filter)
+    ///     .unwrap_or_else(|err| panic!("Failed with {}", err));
+    ///
+    /// println!("{:?}", lumos.tasks);
+    /// ```
 
     pub fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
         let params = [
@@ -114,7 +143,7 @@ impl<'a> User {
             .send()?
             .text()?;
 
-        let serialised_response: Task = serde_json::from_str(&res).unwrap();
+        let serialised_response: Response = serde_json::from_str(&res).unwrap();
         let items = serialised_response.items.unwrap();
 
         if let Some(ref source) = filter.source {
@@ -127,17 +156,19 @@ impl<'a> User {
                     }
                     false
                 })
-                .collect::<Vec<Item>>();
+                .collect::<Vec<Task>>();
 
             self.tasks = parsed_items;
         } else {
             self.tasks = items;
         }
+        update_tasks_db(self);
         Ok(())
     }
 }
 
 fn auth(user: &mut User) -> Result<(), LanternError> {
+    dotenv().ok();
     let params = [
         ("ffauth_device_id", &user.connection.device_id),
         ("ffauth_secret", &user.connection.secret),
@@ -155,7 +186,7 @@ fn auth(user: &mut User) -> Result<(), LanternError> {
         .get(url)
         .header(
             header::COOKIE,
-            header::HeaderValue::from_static("ASP.NET_SessionId=llipgya1gswqety0tdeoo10h"),
+            header::HeaderValue::from_static("ASP.NET_SessionId=hpk3341e5kkmcay2smayowxv"),
         )
         .send()?
         .text()?;
@@ -165,13 +196,14 @@ fn auth(user: &mut User) -> Result<(), LanternError> {
         if secret != "Invalid token" {
             user.connection.secret = secret.to_string();
         } else {
-            return Err(LanternError::Firefly);
+            return Err(LanternError::FireflyAPI);
         }
     };
     Ok(())
 }
 
-fn add_user_to_db(instance: &mut User, new_email: &str) -> UserPG {
+fn add_user_to_db(instance: &mut User, new_email: &str) {
+    use crate::schema::tasks;
     use crate::schema::users;
 
     let new_user = NewUserPG {
@@ -179,9 +211,28 @@ fn add_user_to_db(instance: &mut User, new_email: &str) -> UserPG {
         firefly_secret: &instance.connection.secret,
         device_id: &instance.connection.device_id,
     };
-
     diesel::insert_into(users::table)
         .values(&new_user)
-        .get_result(&mut instance.daemon.db)
-        .expect("Error creating new user")
+        .execute(&mut instance.daemon.db)
+        .expect("error creating new user");
+
+    let new_task_user_relation = NewTask {
+        user_email: new_email,
+        firefly_tasks: json!({"empty": true}),
+        local_tasks: json!({"empty": true}),
+    };
+    diesel::insert_into(tasks::table)
+        .values(&new_task_user_relation)
+        .execute(&mut instance.daemon.db)
+        .expect("error create task-user relation");
+}
+
+fn update_tasks_db(instance: &mut User) {
+    use crate::schema::tasks::dsl::*;
+
+    diesel::update(tasks)
+        .filter(user_email.eq(&instance.connection.email))
+        .set(firefly_tasks.eq::<serde_json::Value>(serde_json::to_value(&instance.tasks).unwrap()))
+        .execute(&mut instance.daemon.db)
+        .unwrap();
 }

@@ -3,8 +3,9 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum LanternError {
-    InvalidSessionID,     // cannot auth due to invalid session ID
-    Firefly,              // something went wrong interacting with Firefly
+    InvalidSessionID, // cannot auth due to invalid session ID
+    SchoolCode,
+    FireflyAPI,           // something went wrong interacting with Firefly
     Misc(Box<dyn Error>), // anything from a database to a dotenvy error (third party errors essentially)
 }
 
@@ -24,7 +25,8 @@ impl fmt::Display for LanternError {
                 Self::InvalidSessionID => {
                     String::from("could not auth with firefly; invalid session id")
                 }
-                Self::Firefly => String::from("something went wrong interacting with firefly"),
+                Self::FireflyAPI => String::from("something went wrong interacting with firefly"),
+                Self::SchoolCode => String::from("incorrect school code provided"),
                 Self::Misc(e) => e.to_string(),
             }
         })
