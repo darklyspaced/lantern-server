@@ -2,7 +2,6 @@
 use quick_xml::{events::Event, reader::Reader};
 pub mod user;
 
-// HACK: used blocking requests instead of async
 fn parse_xml(response: String) -> Vec<String> {
     let mut reader = Reader::from_str(response.as_str());
     reader.trim_text(true);

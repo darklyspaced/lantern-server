@@ -115,7 +115,7 @@ impl<'a> User {
     ///     results: 50,
     ///     source: Some(Source::Ff),
     /// };
-    ///
+    ///;
     /// lumos
     ///     .get_tasks(filter)
     ///     .unwrap_or_else(|err| panic!("Failed with {}", err));
@@ -135,13 +135,45 @@ impl<'a> User {
         )?;
 
         let filters = filter.to_json();
-        let res = self
+        let mut res = self
             .daemon
             .http_client
             .post(url)
             .json(&filters[0])
             .send()?
             .text()?;
+
+        println!("{res}");
+
+        if res == "Invalid token" {
+            if let Ok(()) = auth(self) {
+                use crate::schema::users::dsl::*;
+                let params = [
+                    ("ffauth_device_id", &self.connection.device_id),
+                    ("ffauth_secret", &self.connection.secret),
+                ];
+                let url = reqwest::Url::parse_with_params(
+                    &(self.connection.http_endpoint.to_string()
+                        + "api/v2/taskListing/view/student/tasks/all/filterBy"),
+                    params,
+                )?;
+
+                res = self
+                    .daemon
+                    .http_client
+                    .post(url)
+                    .json(&filters[0])
+                    .send()?
+                    .text()?;
+
+                diesel::update(users)
+                    .filter(email.eq(&self.connection.email))
+                    .set(firefly_secret.eq(&self.connection.secret))
+                    .execute(&mut self.daemon.db)?;
+            } else {
+                panic!("Refreshing secret failed.")
+            }
+        }
 
         let serialised_response: Response = serde_json::from_str(&res).unwrap();
         let items = serialised_response.items.unwrap();
@@ -167,20 +199,20 @@ impl<'a> User {
     }
 }
 
-fn auth(user: &mut User) -> Result<(), LanternError> {
+fn auth(instance: &mut User) -> Result<(), LanternError> {
     dotenv().ok();
     let params = [
-        ("ffauth_device_id", &user.connection.device_id),
-        ("ffauth_secret", &user.connection.secret),
-        ("device_id", &user.connection.device_id),
-        ("app_id", &user.connection.app_id),
+        ("ffauth_device_id", &instance.connection.device_id),
+        ("ffauth_secret", &String::from("")),
+        ("device_id", &instance.connection.device_id),
+        ("app_id", &instance.connection.app_id),
     ];
     let url = reqwest::Url::parse_with_params(
-        &(user.connection.http_endpoint.to_string() + "Login/api/gettoken"),
+        &(instance.connection.http_endpoint.to_string() + "Login/api/gettoken"),
         params,
     )?;
 
-    let res = user
+    let res = instance
         .daemon
         .http_client
         .get(url)
@@ -194,7 +226,7 @@ fn auth(user: &mut User) -> Result<(), LanternError> {
     let txt = parse_xml(res);
     if let Some(secret) = txt.first() {
         if secret != "Invalid token" {
-            user.connection.secret = secret.to_string();
+            instance.connection.secret = secret.to_string();
         } else {
             return Err(LanternError::FireflyAPI);
         }
