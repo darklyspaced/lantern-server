@@ -1,16 +1,17 @@
-use super::parse_xml;
 use crate::error::LanternError;
 use crate::lumos::filter::TaskFilter;
 use crate::lumos::task::{Response, Task};
-use crate::models::{NewTask, NewUserPG, UserPG};
+use crate::models::UserPG;
+use utils::*;
 
 use anyhow::Result;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use dotenvy::dotenv;
-use reqwest::{blocking::Client, header};
-use serde_json::json;
+use reqwest::blocking::Client;
 use uuid::Uuid;
+
+mod utils;
 
 pub struct User {
     pub connection: Info,
@@ -20,11 +21,11 @@ pub struct User {
 
 pub struct Info {
     school_code: String,
-    pub device_id: String,
+    device_id: String,
     app_id: String,
     email: String,
     http_endpoint: String,
-    pub secret: String,
+    secret: String,
 }
 
 struct Daemon {
@@ -195,74 +196,4 @@ impl<'a> User {
         update_tasks_db(self);
         Ok(())
     }
-}
-
-fn auth(instance: &mut User) -> Result<(), LanternError> {
-    dotenv().ok();
-    let params = [
-        ("ffauth_device_id", &instance.connection.device_id),
-        ("ffauth_secret", &String::from("")),
-        ("device_id", &instance.connection.device_id),
-        ("app_id", &instance.connection.app_id),
-    ];
-    let url = reqwest::Url::parse_with_params(
-        &(instance.connection.http_endpoint.to_string() + "Login/api/gettoken"),
-        params,
-    )?;
-
-    let res = instance
-        .daemon
-        .http_client
-        .get(url)
-        .header(
-            header::COOKIE,
-            header::HeaderValue::from_static("ASP.NET_SessionId=hpk3341e5kkmcay2smayowxv"),
-        )
-        .send()?
-        .text()?;
-
-    let txt = parse_xml(res);
-    if let Some(secret) = txt.first() {
-        if secret != "Invalid token" {
-            instance.connection.secret = secret.to_string();
-        } else {
-            return Err(LanternError::FireflyAPI);
-        }
-    };
-    Ok(())
-}
-
-fn add_user_to_db(instance: &mut User, new_email: &str) {
-    use crate::schema::tasks;
-    use crate::schema::users;
-
-    let new_user = NewUserPG {
-        email: new_email,
-        firefly_secret: &instance.connection.secret,
-        device_id: &instance.connection.device_id,
-    };
-    diesel::insert_into(users::table)
-        .values(&new_user)
-        .execute(&mut instance.daemon.db)
-        .expect("error creating new user");
-
-    let new_task_user_relation = NewTask {
-        user_email: new_email,
-        firefly_tasks: json!({"empty": true}),
-        local_tasks: json!({"empty": true}),
-    };
-    diesel::insert_into(tasks::table)
-        .values(&new_task_user_relation)
-        .execute(&mut instance.daemon.db)
-        .expect("error create task-user relation");
-}
-
-fn update_tasks_db(instance: &mut User) {
-    use crate::schema::tasks::dsl::*;
-
-    diesel::update(tasks)
-        .filter(user_email.eq(&instance.connection.email))
-        .set(firefly_tasks.eq::<serde_json::Value>(serde_json::to_value(&instance.tasks).unwrap()))
-        .execute(&mut instance.daemon.db)
-        .unwrap();
 }
