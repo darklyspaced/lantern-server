@@ -106,22 +106,23 @@ impl<'a> User {
     /// use dotenvy::dotenv;
     /// use lantern::prelude::*;
     ///
-    /// dotenv().ok();
-    /// let mut lumos = User::attach("nlcssingapore", "avagarde_client", "sample@email.com").unwrap();
+    /// fn main() {
+    ///     dotenv().ok();
+    ///     let mut lumos = User::attach("nlcssingapore", "avagarde_client", "sample@email.com").unwrap();
     ///
-    /// let filter = TaskFilter {
-    ///     read: ReadStatus::All,
-    ///     status: CompletionStatus::Todo,
-    ///     sorting: (SortBy::DueDate, Order::Ascending),
-    ///     results: 50,
-    ///     source: Some(Source::Ff),
-    /// };
+    ///     let filter = TaskFilter {
+    ///         read: ReadStatus::All,
+    ///         status: CompletionStatus::Todo,
+    ///         sorting: (SortBy::DueDate, Order::Ascending),
+    ///         source: Some(Source::Ff),
+    ///     };
     ///
-    /// lumos
-    ///     .get_tasks(filter)
-    ///     .unwrap_or_else(|err| panic!("Failed with {}", err));
+    ///     lumos
+    ///         .get_tasks(filter)
+    ///         .unwrap_or_else(|err| panic!("Failed with {}", err));
     ///
-    /// println!("{:?}", lumos.tasks);
+    ///     println!("{:?}", lumos.tasks);
+    /// }
     /// ```
 
     pub fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
