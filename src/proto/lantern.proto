@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+service Lantern {
+  rpc GetTasks(Filter) returns (Tasks) {}
+}
+
+message Filter {
+  string status = 1;
+  string read = 2;
+  string sort_by = 3;
+  string sort_order = 4;
+  string results = 5;
+  string source = 6;
+}

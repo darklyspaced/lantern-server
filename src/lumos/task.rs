@@ -1,4 +1,4 @@
-use super::task_filter::Source;
+use crate::lumos::filter::Source;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Default)]

@@ -1,21 +1,15 @@
-use anyhow::Result;
 use dotenvy::dotenv;
-use lantern::{error::LanternError, prelude::*};
+use lantern::prelude::*;
 
-fn main() -> Result<()> {
+fn main() {
     dotenv().ok();
-    let mut lumos = match User::attach("nlcssingapore", "avagarde_client", "sample@email.com") {
-        Ok(obj) => obj,
-        Err(LanternError::InvalidSessionID) => panic!("Invalid Firefly Session ID"),
-        Err(LanternError::SchoolCode) => panic!("No associated school found for school code."),
-        Err(err) => panic!("Paniced with {err}"),
-    };
+    let mut lumos = User::attach("nlcssingapore", "avagarde_client", "sample@email.com").unwrap();
 
     let filter = TaskFilter {
         read: ReadStatus::All,
         status: CompletionStatus::Todo,
         sorting: (SortBy::DueDate, Order::Ascending),
-        results: 50,
+        results: 150,
         source: Some(Source::Ff),
     };
 
@@ -24,7 +18,4 @@ fn main() -> Result<()> {
         .unwrap_or_else(|err| panic!("Failed with {}", err));
 
     println!("{:?}", lumos.tasks);
-    // println!("{:?}", lumos.connection.secret);
-
-    Ok(())
 }

@@ -1,5 +1,5 @@
-use crate::schema::tasks;
-use crate::schema::users;
+use super::schema::tasks;
+use super::schema::users;
 use diesel::prelude::*;
 
 #[derive(Queryable)]

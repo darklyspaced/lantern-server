@@ -61,6 +61,8 @@ pub struct JSONTaskFilter {
 }
 
 impl TaskFilter {
+    /// Converts the more ergonomic [`TaskFilter`]to a `Vec<JSONTaskFilter>` a vector of filters (one
+    /// for each page) that can then be serialised into a JSON for each request.
     pub fn to_json(&self) -> Vec<JSONTaskFilter> {
         let mut filters: Vec<JSONTaskFilter> = vec![];
         let pages: u32 = (self.results - 1) / 50;

@@ -1,5 +1,7 @@
 // #![allow(unused)]
 use quick_xml::{events::Event, reader::Reader};
+pub mod filter;
+pub mod task;
 pub mod user;
 
 fn parse_xml(response: String) -> Vec<String> {

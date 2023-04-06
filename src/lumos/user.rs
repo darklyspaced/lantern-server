@@ -1,8 +1,8 @@
 use super::parse_xml;
 use crate::error::LanternError;
+use crate::lumos::filter::TaskFilter;
+use crate::lumos::task::{Response, Task};
 use crate::models::{NewTask, NewUserPG, UserPG};
-use crate::serialise_res::{Response, Task};
-use crate::task_filter::*;
 
 use anyhow::Result;
 use diesel::pg::PgConnection;
@@ -115,7 +115,7 @@ impl<'a> User {
     ///     results: 50,
     ///     source: Some(Source::Ff),
     /// };
-    ///;
+    ///
     /// lumos
     ///     .get_tasks(filter)
     ///     .unwrap_or_else(|err| panic!("Failed with {}", err));
@@ -142,8 +142,6 @@ impl<'a> User {
             .json(&filters[0])
             .send()?
             .text()?;
-
-        println!("{res}");
 
         if res == "Invalid token" {
             if let Ok(()) = auth(self) {
