@@ -9,7 +9,6 @@ fn main() {
         read: ReadStatus::All,
         status: CompletionStatus::Todo,
         sorting: (SortBy::DueDate, Order::Ascending),
-        results: 150,
         source: Some(Source::Ff),
     };
 

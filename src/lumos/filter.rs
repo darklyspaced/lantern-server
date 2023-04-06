@@ -37,7 +37,6 @@ pub struct TaskFilter {
     pub status: CompletionStatus,
     pub read: ReadStatus,
     pub sorting: (SortBy, Order), // String = DueDate or SetDate; bool is True or False
-    pub results: u32,             // no. of tasks to retrieve
     pub source: Option<Source>,   // Google Classroom or Firefly; sometimes not present -_-
 }
 
@@ -65,12 +64,13 @@ impl TaskFilter {
     /// for each page) that can then be serialised into a JSON for each request.
     pub fn to_json(&self) -> Vec<JSONTaskFilter> {
         let mut filters: Vec<JSONTaskFilter> = vec![];
-        let pages: u32 = (self.results - 1) / 50;
+        let results = 1000;
+        let pages: u32 = (results - 1) / 50;
         for page in 0..pages + 1 {
             let pre_json = JSONTaskFilter {
                 ownerType: String::from("OnlySetters"),
                 page,
-                pageSize: min(self.results - 50 * page, 50),
+                pageSize: min(results - 50 * page, 50),
                 archiveStatus: String::from("All"),
                 completionStatus: match self.status {
                     CompletionStatus::Todo => String::from("Todo"),
