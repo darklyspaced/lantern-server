@@ -27,7 +27,7 @@ pub fn parse_xml(response: String) -> Vec<String> {
     txt
 }
 
-pub async fn auth(instance: &mut User) -> Result<(), LanternError> {
+pub async fn auth(instance: &mut User) {
     dotenv().ok();
     let params = [
         ("ffauth_device_id", &instance.connection.device_id),
@@ -38,7 +38,8 @@ pub async fn auth(instance: &mut User) -> Result<(), LanternError> {
     let url = reqwest::Url::parse_with_params(
         &(instance.connection.http_endpoint.to_string() + "Login/api/gettoken"),
         params,
-    )?;
+    )
+    .unwrap();
 
     let res = instance
         .daemon
@@ -49,19 +50,20 @@ pub async fn auth(instance: &mut User) -> Result<(), LanternError> {
             header::HeaderValue::from_static("ASP.NET_SessionId=hpk3341e5kkmcay2smayowxv"),
         )
         .send()
-        .await?
+        .await
+        .unwrap()
         .text()
-        .await?;
+        .await
+        .unwrap();
 
     let txt = parse_xml(res);
     if let Some(secret) = txt.first() {
         if secret != "Invalid token" {
             instance.connection.secret = secret.to_string();
         } else {
-            return Err(LanternError::FireflyAPI);
+            panic!("Invalide SessionID!")
         }
     };
-    Ok(())
 }
 
 pub fn add_user_to_db(instance: &mut User, new_email: &str) {

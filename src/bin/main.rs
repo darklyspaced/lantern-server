@@ -18,18 +18,17 @@ impl Lantern for TaskService {
         let mut user = User::attach("nlcssingapore", "whatever", "sample@email.com")
             .await
             .unwrap();
-        user.get_tasks(filter).await;
+        user.get_tasks(filter).await.unwrap();
 
         let tasks = user.tasks;
 
-        let t = serde_json::to_string(&tasks).unwrap();
         Ok(Response::new(Tasks {
-            body: String::from("Hi"),
+            body: serde_json::to_string(&tasks).unwrap(),
         }))
     }
 
     async fn add_tasks(&self, request: Request<Tasks>) -> Result<Response<StatusCode>, Status> {
-        let tasks = request.get_ref();
+        let _tasks = request.get_ref();
         Ok(Response::new(StatusCode {
             success: true,
             msg: String::from("101"),
@@ -41,7 +40,7 @@ impl Lantern for TaskService {
 async fn main() -> Result<()> {
     let addr = "[::1]:8000".parse().unwrap();
 
-    let task_service = TaskService;
+    let _task_service = TaskService;
     let svc = LanternServer::new(TaskService);
 
     Server::builder().add_service(svc).serve(addr).await?;
@@ -61,19 +60,19 @@ fn construct_filter(filter: &Filter) -> TaskFilter {
             "Todo" => CompletionStatus::Todo,
             "DoneOrArchived" => CompletionStatus::DoneOrArchived,
             "All" => CompletionStatus::All,
-            _ => panic!("Invalid status"),
+            _ => panic!("Invalid `status` on TaskFilter"),
         },
         read: match filter.read.as_str() {
             "All" => ReadStatus::All,
             "OnlyRead" => ReadStatus::OnlyRead,
             "OnlyUnread" => ReadStatus::OnlyUnread,
-            _ => panic!("Invalid read status"),
+            _ => panic!("Invalid `read` on TaskFilter"),
         },
         sorting: (
             match filter.sort_by.as_str() {
                 "SetDate" => SortBy::SetDate,
                 "DueDate" => SortBy::DueDate,
-                _ => panic!("Invalid sort_by"),
+                _ => panic!("Invalid `sort_by` on TaskFilter"),
             },
             match filter.sort_order.as_str() {
                 "Ascending" => Order::Ascending,

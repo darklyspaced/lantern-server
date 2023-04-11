@@ -81,11 +81,7 @@ impl<'a> User {
             .expect("Failed to get emails.");
 
         if emails.is_empty() {
-            if let Ok(()) = auth(&mut user).await {
-                add_user_to_db(&mut user, user_email);
-            } else {
-                return Err(LanternError::InvalidSessionID);
-            }
+            add_user_to_db(&mut user, user_email);
         } else {
             let data = emails.first().unwrap();
             user.connection.secret = data.firefly_secret.to_owned();
@@ -147,35 +143,32 @@ impl<'a> User {
             .await?;
 
         if res == "Invalid token" {
-            if let Ok(()) = auth(self).await {
-                use crate::schema::users::dsl::*;
-                let params = [
-                    ("ffauth_device_id", &self.connection.device_id),
-                    ("ffauth_secret", &self.connection.secret),
-                ];
-                let url = reqwest::Url::parse_with_params(
-                    &(self.connection.http_endpoint.to_string()
-                        + "api/v2/taskListing/view/student/tasks/all/filterBy"),
-                    params,
-                )?;
+            auth(self).await;
+            use crate::schema::users::dsl::*;
+            let params = [
+                ("ffauth_device_id", &self.connection.device_id),
+                ("ffauth_secret", &self.connection.secret),
+            ];
+            let url = reqwest::Url::parse_with_params(
+                &(self.connection.http_endpoint.to_string()
+                    + "api/v2/taskListing/view/student/tasks/all/filterBy"),
+                params,
+            )?;
 
-                res = self
-                    .daemon
-                    .http_client
-                    .post(url)
-                    .json(&filters[0])
-                    .send()
-                    .await?
-                    .text()
-                    .await?;
+            res = self
+                .daemon
+                .http_client
+                .post(url)
+                .json(&filters[0])
+                .send()
+                .await?
+                .text()
+                .await?;
 
-                diesel::update(users)
-                    .filter(email.eq(&self.connection.email))
-                    .set(firefly_secret.eq(&self.connection.secret))
-                    .execute(&mut self.daemon.db)?;
-            } else {
-                panic!("Refreshing secret failed.")
-            }
+            diesel::update(users)
+                .filter(email.eq(&self.connection.email))
+                .set(firefly_secret.eq(&self.connection.secret))
+                .execute(&mut self.daemon.db)?;
         }
 
         let serialised_response: Response = serde_json::from_str(&res).unwrap();
