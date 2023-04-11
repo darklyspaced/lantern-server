@@ -1,7 +1,9 @@
 syntax = "proto3";
+package light;
 
 service Lantern {
   rpc GetTasks(Filter) returns (Tasks) {}
+  rpc AddTasks(Tasks) returns (StatusCode) {}
 }
 
 message Filter {
@@ -9,6 +11,12 @@ message Filter {
   string read = 2;
   string sort_by = 3;
   string sort_order = 4;
-  string results = 5;
-  string source = 6;
+  string source = 5;
+}
+
+message Tasks { string body = 1; }
+
+message StatusCode {
+  bool success = 1;
+  string msg = 2;
 }

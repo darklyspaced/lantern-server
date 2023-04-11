@@ -5,10 +5,9 @@ use crate::models::UserPG;
 use utils::*;
 
 use anyhow::Result;
-use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use dotenvy::dotenv;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use uuid::Uuid;
 
 mod utils;
@@ -34,8 +33,8 @@ struct Daemon {
 }
 
 impl<'a> User {
-    /// Authenticates user with Firefly
-    pub fn attach(
+    /// Authenticates user with Firefly.
+    pub async fn attach(
         school_code: &'a str,
         app_id: &'a str,
         user_email: &'a str,
@@ -66,7 +65,7 @@ impl<'a> User {
         let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
         let url = reqwest::Url::parse(&(portal + school_code))?;
 
-        let response = user.daemon.http_client.get(url).send()?.text();
+        let response = user.daemon.http_client.get(url).send().await?.text().await;
         if let Ok(res) = response {
             let res = parse_xml(res);
             user.connection.http_endpoint = String::from("https://") + &res[1] + "/";
@@ -79,10 +78,10 @@ impl<'a> User {
         let emails = users
             .filter(email.eq(user_email))
             .load::<UserPG>(&mut user.daemon.db)
-            .expect("Error loading emails");
+            .expect("Failed to get emails.");
 
         if emails.is_empty() {
-            if let Ok(()) = auth(&mut user) {
+            if let Ok(()) = auth(&mut user).await {
                 add_user_to_db(&mut user, user_email);
             } else {
                 return Err(LanternError::InvalidSessionID);
@@ -125,7 +124,7 @@ impl<'a> User {
     /// }
     /// ```
 
-    pub fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
+    pub async fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
         let params = [
             ("ffauth_device_id", &self.connection.device_id),
             ("ffauth_secret", &self.connection.secret),
@@ -142,11 +141,13 @@ impl<'a> User {
             .http_client
             .post(url)
             .json(&filters[0])
-            .send()?
-            .text()?;
+            .send()
+            .await?
+            .text()
+            .await?;
 
         if res == "Invalid token" {
-            if let Ok(()) = auth(self) {
+            if let Ok(()) = auth(self).await {
                 use crate::schema::users::dsl::*;
                 let params = [
                     ("ffauth_device_id", &self.connection.device_id),
@@ -163,8 +164,10 @@ impl<'a> User {
                     .http_client
                     .post(url)
                     .json(&filters[0])
-                    .send()?
-                    .text()?;
+                    .send()
+                    .await?
+                    .text()
+                    .await?;
 
                 diesel::update(users)
                     .filter(email.eq(&self.connection.email))
