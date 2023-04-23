@@ -27,6 +27,15 @@ impl Lantern for TaskService {
         }))
     }
 
+    /// Adds a task to the database
+    /// Must be in the json format specified:
+    /// {
+    ///     "name": str,
+    ///     "id": int,
+    ///     "done": bool,
+    ///     "due_date": str, -> chrono
+    ///     "tags": [arr]
+    /// }
     async fn add_tasks(&self, request: Request<Tasks>) -> Result<Response<StatusCode>, Status> {
         let _tasks = request.get_ref();
         Ok(Response::new(StatusCode {
@@ -39,6 +48,7 @@ impl Lantern for TaskService {
 #[tokio::main]
 async fn main() -> Result<()> {
     let addr = "[::1]:8000".parse().unwrap();
+    println!("Starting server on port 127.0.0.1:8000");
 
     let _task_service = TaskService;
     let svc = LanternServer::new(TaskService);
