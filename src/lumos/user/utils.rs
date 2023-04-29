@@ -1,7 +1,4 @@
-use std::error::Error;
-
 use super::User;
-use crate::error::LanternError;
 use reqwest::header;
 
 use crate::models::{NewTask, NewUserPG};
