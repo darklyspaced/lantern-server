@@ -59,24 +59,24 @@ fn construct_filter(filter: &Filter) -> TaskFilter {
             "Todo" => CompletionStatus::Todo,
             "DoneOrArchived" => CompletionStatus::DoneOrArchived,
             "All" => CompletionStatus::All,
-            _ => panic!("Invalid `status` on TaskFilter"),
+            _ => panic!("invalid `status` on TaskFilter"),
         },
         read: match filter.read.as_str() {
             "All" => ReadStatus::All,
             "OnlyRead" => ReadStatus::OnlyRead,
             "OnlyUnread" => ReadStatus::OnlyUnread,
-            _ => panic!("Invalid `read` on TaskFilter"),
+            _ => panic!("invalid `read` on TaskFilter"),
         },
         sorting: (
             match filter.sort_by.as_str() {
                 "SetDate" => SortBy::SetDate,
                 "DueDate" => SortBy::DueDate,
-                _ => panic!("Invalid `sort_by` on TaskFilter"),
+                _ => panic!("invalid `sort_by` on TaskFilter"),
             },
             match filter.sort_order.as_str() {
                 "Ascending" => Order::Ascending,
                 "Descending" => Order::Descending,
-                _ => panic!("Invalid order"),
+                _ => panic!("invalid `order` on TaskFilter"),
             },
         ),
     }
