@@ -103,7 +103,7 @@ pub struct RawTask {
     pub title: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct Task {
     pub due_date: String,
     pub is_done: bool,

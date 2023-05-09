@@ -121,6 +121,18 @@ impl<'a> User {
     /// ```
 
     pub async fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
+        fn standardise_ff_tasks(items: Vec<RawTask>) -> Vec<Task> {
+            if let Some(tasks) = rawtask_to_task(items) {
+                tasks
+            } else {
+                eprintln!("Error converting RawTask -> Task");
+                vec![Task {
+                    title: String::from("ERROR 102: RawTask -> Task failed!"),
+                    ..Default::default()
+                }]
+            }
+        }
+
         let params = [
             ("ffauth_device_id", &self.connection.device_id),
             ("ffauth_secret", &self.connection.secret),

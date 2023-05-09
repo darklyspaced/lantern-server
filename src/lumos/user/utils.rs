@@ -98,7 +98,12 @@ pub fn update_tasks_db(instance: &mut User) {
         .unwrap();
 }
 
-pub fn standardise_ff_tasks(tasks: Vec<RawTask>) -> Option<Vec<Task>> {
+/// Converts the serialised response [`RawTask`], that is received from Firefly, into [`Task`]. A
+/// more condensed, and relevant format.
+///
+/// This ensures parity, in format, between tasks that were pulled from Firefly and those that were
+/// created by the user. This allows the frontend to have just one parser for tasks as well.
+pub fn rawtask_to_task(tasks: Vec<RawTask>) -> Option<Vec<Task>> {
     let mut standard_tasks = vec![];
     for task in tasks {
         standard_tasks.push({
