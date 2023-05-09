@@ -105,12 +105,11 @@ pub struct RawTask {
 
 #[derive(Debug, Serialize)]
 pub struct Task {
-    pub archived: Option<bool>,
-    pub due_date: Option<String>,
-    pub file_submission_required: Option<bool>,
-    pub is_done: Option<bool>,
-    pub set_date: Option<String>,
-    pub title: Option<String>,
+    pub due_date: String,
+    pub is_done: bool,
+    pub set_date: String,
+    pub title: String,
+    pub id: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
