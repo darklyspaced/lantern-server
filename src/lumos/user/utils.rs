@@ -1,10 +1,10 @@
-use super::User;
-use reqwest::header;
-
+use super::{RawTask, Task, User};
 use crate::models::{NewTask, NewUserPG};
+
 use diesel::prelude::*;
 use dotenvy::dotenv;
 use quick_xml::{events::Event, reader::Reader};
+use reqwest::header;
 use serde_json::json;
 
 pub fn parse_xml(response: String) -> Vec<String> {
@@ -98,4 +98,19 @@ pub fn update_tasks_db(instance: &mut User) {
         .unwrap();
 }
 
-pub fn standardise_ff_tasks(instance: &mut User) {}
+pub fn standardise_ff_tasks(tasks: Vec<RawTask>) -> Vec<Task> {
+    let mut standard_tasks = vec![];
+    for task in tasks {
+        standard_tasks.push({
+            Task {
+                archived: task.archived,
+                due_date: task.due_date.clone(),
+                file_submission_required: task.file_submission_required,
+                is_done: task.is_done,
+                set_date: task.set_date.clone(),
+                title: task.title.clone(),
+            }
+        })
+    }
+    standard_tasks
+}

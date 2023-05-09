@@ -1,6 +1,6 @@
 use crate::error::LanternError;
 use crate::lumos::filter::TaskFilter;
-use crate::lumos::task::{RawTask, Response};
+use crate::lumos::task::{RawTask, Response, Task};
 use crate::models::UserPG;
 use utils::*;
 
@@ -15,7 +15,7 @@ mod utils;
 pub struct User {
     pub connection: Info,
     daemon: Daemon,
-    pub tasks: Vec<RawTask>,
+    pub tasks: Vec<Task>,
 }
 
 pub struct Info {
@@ -186,9 +186,9 @@ impl<'a> User {
                 })
                 .collect::<Vec<RawTask>>();
 
-            self.tasks = parsed_items;
+            self.tasks = standardise_ff_tasks(parsed_items);
         } else {
-            self.tasks = items;
+            self.tasks = standardise_ff_tasks(items);
         }
         update_tasks_db(self);
         Ok(())

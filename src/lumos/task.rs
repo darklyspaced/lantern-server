@@ -103,6 +103,16 @@ pub struct RawTask {
     pub title: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct Task {
+    pub archived: Option<bool>,
+    pub due_date: Option<String>,
+    pub file_submission_required: Option<bool>,
+    pub is_done: Option<bool>,
+    pub set_date: Option<String>,
+    pub title: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Addressee {
     #[serde(rename = "guid")]
