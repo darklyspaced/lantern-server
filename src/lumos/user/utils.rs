@@ -97,3 +97,5 @@ pub fn update_tasks_db(instance: &mut User) {
         .execute(&mut instance.daemon.db)
         .unwrap();
 }
+
+pub fn standardise_ff_tasks(instance: &mut User) {}
