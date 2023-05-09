@@ -22,6 +22,7 @@ impl Lantern for TaskService {
         user.get_tasks(filter).await.unwrap();
 
         let tasks = user.tasks;
+        println!("{:?}", tasks);
 
         Ok(Response::new(Tasks {
             body: serde_json::to_string(&tasks).unwrap(),

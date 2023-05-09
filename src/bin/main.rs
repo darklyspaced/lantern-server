@@ -2,6 +2,8 @@ use anyhow::Result;
 use lantern::lumos::rpc::{LanternServer, TaskService};
 use tonic::transport::Server;
 
+pub struct Request {}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let addr = "[::1]:8000".parse().unwrap();

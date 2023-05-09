@@ -1,10 +1,10 @@
-use super::User;
-use reqwest::header;
-
+use super::{RawTask, Task, User};
 use crate::models::{NewTask, NewUserPG};
+
 use diesel::prelude::*;
 use dotenvy::dotenv;
 use quick_xml::{events::Event, reader::Reader};
+use reqwest::header;
 use serde_json::json;
 
 pub fn parse_xml(response: String) -> Vec<String> {
@@ -96,4 +96,31 @@ pub fn update_tasks_db(instance: &mut User) {
         .set(firefly_tasks.eq::<serde_json::Value>(serde_json::to_value(&instance.tasks).unwrap()))
         .execute(&mut instance.daemon.db)
         .unwrap();
+}
+
+/// Converts the serialised response [`RawTask`], that is received from Firefly, into [`Task`]. A
+/// more condensed, and relevant format.
+///
+/// This ensures parity, in format, between tasks that were pulled from Firefly and those that were
+/// created by the user. This allows the frontend to have just one parser for tasks as well.
+pub fn rawtask_to_task(tasks: Vec<RawTask>) -> Option<Vec<Task>> {
+    let mut standard_tasks = vec![];
+    for task in tasks {
+        standard_tasks.push({
+            Task {
+                due_date: task.due_date?.clone(),
+                is_done: task.is_done?,
+                set_date: task.set_date?.clone(),
+                title: task.title?.clone(),
+                id: {
+                    if let Some(id) = task.id {
+                        id.parse::<usize>().unwrap()
+                    } else {
+                        0
+                    }
+                },
+            }
+        })
+    }
+    Some(standard_tasks)
 }

@@ -1,6 +1,6 @@
 use crate::error::LanternError;
 use crate::lumos::filter::TaskFilter;
-use crate::lumos::task::{Response, Task};
+use crate::lumos::task::{RawTask, Response, Task};
 use crate::models::UserPG;
 use utils::*;
 
@@ -121,6 +121,18 @@ impl<'a> User {
     /// ```
 
     pub async fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
+        fn standardise_ff_tasks(items: Vec<RawTask>) -> Vec<Task> {
+            if let Some(tasks) = rawtask_to_task(items) {
+                tasks
+            } else {
+                eprintln!("Error converting RawTask -> Task");
+                vec![Task {
+                    title: String::from("ERROR 102: RawTask -> Task failed!"),
+                    ..Default::default()
+                }]
+            }
+        }
+
         let params = [
             ("ffauth_device_id", &self.connection.device_id),
             ("ffauth_secret", &self.connection.secret),
@@ -184,11 +196,11 @@ impl<'a> User {
                     }
                     false
                 })
-                .collect::<Vec<Task>>();
+                .collect::<Vec<RawTask>>();
 
-            self.tasks = parsed_items;
+            self.tasks = standardise_ff_tasks(parsed_items);
         } else {
-            self.tasks = items;
+            self.tasks = standardise_ff_tasks(items);
         }
         update_tasks_db(self);
         Ok(())
