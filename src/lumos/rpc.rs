@@ -9,6 +9,8 @@ pub use light::lantern_server::LanternServer;
 use light::{Filter, StatusCode, Tasks};
 use tonic::{Request, Response, Status};
 
+use super::task::Task;
+
 #[derive(Default)]
 pub struct TaskService;
 
@@ -39,11 +41,22 @@ impl Lantern for TaskService {
     ///     "tags": [arr]
     /// }
     async fn add_tasks(&self, request: Request<Tasks>) -> Result<Response<StatusCode>, Status> {
-        let _tasks = request.get_ref();
-        Ok(Response::new(StatusCode {
-            success: true,
-            msg: String::from("101"),
-        }))
+        println!("{}", request.get_ref().body);
+        let tasks = serde_json::from_str::<Task>(request.get_ref().body.as_ref());
+        if let Ok(_) = tasks {
+            println!("{:#?}", tasks);
+            return Ok(Response::new(StatusCode {
+                success: true,
+                msg: String::from("added task"),
+            }));
+        } else {
+            return Ok(Response::new(StatusCode {
+                success: false,
+                msg: String::from(
+                    "failed to serialise task. ensure that task is in corrent format.",
+                ),
+            }));
+        }
     }
 }
 
