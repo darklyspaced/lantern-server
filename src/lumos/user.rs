@@ -91,7 +91,7 @@ impl<'a> User {
         Ok(user)
     }
 
-    /// Gets tasks from Firefly based on authentication done previously
+    /// Gets tasks from Firefly based on authentication done in attach
     ///
     /// This function querys the Firefly API with a POST request to determine how to filter the
     /// tasks that it returns. You can customise this filter with [`TaskFilter`]. The returned JSON

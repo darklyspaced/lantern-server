@@ -11,6 +11,15 @@ pub struct UserPG {
     pub device_id: String,
 }
 
+#[derive(Queryable)]
+#[diesel(table_name = tasks)]
+pub struct Tasks {
+    pub id: i32,
+    pub user_email: String,
+    pub local_tasks: String,
+    pub firefly_tasks: String,
+}
+
 #[derive(Insertable)]
 #[diesel(table_name = users)]
 pub struct NewUserPG<'a> {

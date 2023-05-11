@@ -1,18 +1,19 @@
 pub mod light {
     tonic::include_proto!("light");
 }
+use super::task::Task;
 use crate::prelude::*;
 
 use anyhow::Result;
 use light::lantern_server::Lantern;
 pub use light::lantern_server::LanternServer;
 use light::{Filter, StatusCode, Tasks};
+use std::str::FromStr;
 use tonic::{Request, Response, Status};
-
-use super::task::Task;
+// use diesel::prelude::*;
 
 #[derive(Default)]
-pub struct TaskService;
+pub struct TaskService; // TODO: allow TaskService to have access to a threadpool for db connection
 
 #[tonic::async_trait]
 impl Lantern for TaskService {
@@ -21,30 +22,29 @@ impl Lantern for TaskService {
         let mut user = User::attach("nlcssingapore", "whatever", "sample@email.com")
             .await
             .unwrap();
-        user.get_tasks(filter).await.unwrap();
 
-        let tasks = user.tasks;
-        println!("{:?}", tasks);
+        if let Ok(filter) = filter {
+            user.get_tasks(filter).await.unwrap();
+        } else {
+            panic!("failed to create filter from input");
+        }
 
         Ok(Response::new(Tasks {
-            body: serde_json::to_string(&tasks).unwrap(),
+            body: serde_json::to_string(&user.tasks).unwrap(),
         }))
     }
 
-    /// Adds a task to the database
-    /// Must be in the json format specified:
-    /// {
-    ///     "name": str,
-    ///     "id": int,
-    ///     "done": bool,
-    ///     "due_date": str, -> chrono
-    ///     "tags": [arr]
-    /// }
     async fn add_tasks(&self, request: Request<Tasks>) -> Result<Response<StatusCode>, Status> {
+        // use crate::schema::tasks::dsl::*;
+
+        // let emails = tasks
+        //     .filter(user_email.eq("test"))
+        //     .load::<crate::models::Tasks>(&mut user.daemon.db)
+        //     .expect("Failed to get emails.");
+
         println!("{}", request.get_ref().body);
-        let tasks = serde_json::from_str::<Task>(request.get_ref().body.as_ref());
-        if let Ok(_) = tasks {
-            println!("{:#?}", tasks);
+        let loc_tasks = serde_json::from_str::<Task>(request.get_ref().body.as_ref());
+        if let Ok(_) = loc_tasks {
             return Ok(Response::new(StatusCode {
                 success: true,
                 msg: String::from("added task"),
@@ -60,38 +60,16 @@ impl Lantern for TaskService {
     }
 }
 
-fn construct_filter(filter: &Filter) -> TaskFilter {
-    TaskFilter {
-        // HACK: potentially replace with macro that I write
-        // HACK: remove the panics
-        source: match filter.source.as_str() {
-            "FF" => Some(Source::Ff),
-            "GC" => Some(Source::Gc),
-            _ => None,
-        },
-        status: match filter.status.as_str() {
-            "Todo" => CompletionStatus::Todo,
-            "DoneOrArchived" => CompletionStatus::DoneOrArchived,
-            "All" => CompletionStatus::All,
-            _ => panic!("invalid `status` on TaskFilter"),
-        },
-        read: match filter.read.as_str() {
-            "All" => ReadStatus::All,
-            "OnlyRead" => ReadStatus::OnlyRead,
-            "OnlyUnread" => ReadStatus::OnlyUnread,
-            _ => panic!("invalid `read` on TaskFilter"),
-        },
+fn construct_filter(
+    filter: &Filter,
+) -> Result<TaskFilter, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(TaskFilter {
+        source: Some(Source::from_str(filter.source.as_str())?),
+        status: CompletionStatus::from_str(filter.status.as_str())?,
+        read: ReadStatus::from_str(filter.read.as_str())?,
         sorting: (
-            match filter.sort_by.as_str() {
-                "SetDate" => SortBy::SetDate,
-                "DueDate" => SortBy::DueDate,
-                _ => panic!("invalid `sort_by` on TaskFilter"),
-            },
-            match filter.sort_order.as_str() {
-                "Ascending" => Order::Ascending,
-                "Descending" => Order::Descending,
-                _ => panic!("invalid `order` on TaskFilter"),
-            },
+            SortBy::from_str(filter.sort_by.as_str())?,
+            SortOrder::from_str(filter.sort_order.as_str())?,
         ),
-    }
+    })
 }

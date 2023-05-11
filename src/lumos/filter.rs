@@ -1,32 +1,39 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
+use strum::EnumString;
 
+#[derive(Debug, PartialEq, EnumString)]
 pub enum CompletionStatus {
     Todo,
     DoneOrArchived,
     All,
 }
 
+#[derive(Debug, PartialEq, EnumString)]
 pub enum ReadStatus {
     All,
     OnlyRead,
     OnlyUnread,
 }
 
-pub enum Order {
+#[derive(Debug, PartialEq, EnumString)]
+pub enum SortOrder {
     Ascending,
     Descending,
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, EnumString)]
 pub enum Source {
     #[serde(rename = "FF")]
+    #[strum(serialize = "FF")]
     Ff,
 
     #[serde(rename = "GC")]
+    #[strum(serialize = "GC")]
     Gc,
 }
 
+#[derive(Debug, PartialEq, EnumString)]
 pub enum SortBy {
     DueDate,
     SetDate,
@@ -36,8 +43,8 @@ pub enum SortBy {
 pub struct TaskFilter {
     pub status: CompletionStatus,
     pub read: ReadStatus,
-    pub sorting: (SortBy, Order), // String = DueDate or SetDate; bool is True or False
-    pub source: Option<Source>,   // Google Classroom or Firefly; sometimes not present -_-
+    pub sorting: (SortBy, SortOrder), // String = DueDate or SetDate; bool is True or False
+    pub source: Option<Source>,       // Google Classroom or Firefly; sometimes not present -_-
 }
 
 #[derive(serde::Serialize, Deserialize)]
@@ -89,8 +96,8 @@ impl TaskFilter {
                         SortBy::SetDate => String::from("SetDate"),
                     },
                     order: match self.sorting.1 {
-                        Order::Ascending => String::from("Ascending"),
-                        Order::Descending => String::from("Descending"),
+                        SortOrder::Ascending => String::from("Ascending"),
+                        SortOrder::Descending => String::from("Descending"),
                     },
                 }],
             };

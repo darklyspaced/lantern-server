@@ -9,7 +9,7 @@ pub use orm::schema;
 
 pub mod prelude {
     pub use super::lumos::filter::{
-        CompletionStatus, Order, ReadStatus, SortBy, Source, TaskFilter,
+        CompletionStatus, ReadStatus, SortBy, SortOrder, Source, TaskFilter,
     };
     pub use super::lumos::user::User;
 }
