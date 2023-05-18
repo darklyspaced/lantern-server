@@ -1,28 +1,30 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
+use std::string::ToString;
 use strum::EnumString;
+use strum_macros::Display;
 
-#[derive(Debug, PartialEq, EnumString)]
+#[derive(Debug, PartialEq, EnumString, Display)]
 pub enum CompletionStatus {
     Todo,
     DoneOrArchived,
-    All,
+    AllIncludingArchived,
 }
 
-#[derive(Debug, PartialEq, EnumString)]
+#[derive(Debug, PartialEq, EnumString, Display)]
 pub enum ReadStatus {
     All,
     OnlyRead,
     OnlyUnread,
 }
 
-#[derive(Debug, PartialEq, EnumString)]
+#[derive(Debug, PartialEq, EnumString, Display)]
 pub enum SortOrder {
     Ascending,
     Descending,
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, EnumString)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, EnumString, Display)]
 pub enum Source {
     #[serde(rename = "FF")]
     #[strum(serialize = "FF")]
@@ -33,14 +35,14 @@ pub enum Source {
     Gc,
 }
 
-#[derive(Debug, PartialEq, EnumString)]
+#[derive(Debug, PartialEq, EnumString, Display)]
 pub enum SortBy {
     DueDate,
     SetDate,
 }
 
 #[allow(dead_code)]
-pub struct TaskFilter {
+pub struct FFTaskFilter {
     pub status: CompletionStatus,
     pub read: ReadStatus,
     pub sorting: (SortBy, SortOrder), // String = DueDate or SetDate; bool is True or False
@@ -55,7 +57,7 @@ struct Sorting {
 
 #[derive(serde::Serialize, Deserialize)]
 #[allow(non_snake_case)]
-pub struct JSONTaskFilter {
+pub struct JSONFFTaskFilter {
     ownerType: String,
     page: u32,
     pageSize: u32,
@@ -66,39 +68,25 @@ pub struct JSONTaskFilter {
     sortingCriteria: Vec<Sorting>,
 }
 
-impl TaskFilter {
-    /// Converts the more ergonomic [`TaskFilter`]to a `Vec<JSONTaskFilter>` a vector of filters (one
+impl FFTaskFilter {
+    /// Converts the more ergonomic [`FFTaskFilter`] to a `Vec<JSONTaskFilter>` a vector of filters (one
     /// for each page) that can then be serialised into a JSON for each request.
-    pub fn to_json(&self) -> Vec<JSONTaskFilter> {
-        let mut filters: Vec<JSONTaskFilter> = vec![];
+    pub fn to_json(&self) -> Vec<JSONFFTaskFilter> {
+        let mut filters: Vec<JSONFFTaskFilter> = vec![];
         let results = 1000;
         let pages: u32 = (results - 1) / 50;
         for page in 0..pages + 1 {
-            let pre_json = JSONTaskFilter {
+            let pre_json = JSONFFTaskFilter {
                 ownerType: String::from("OnlySetters"),
                 page,
                 pageSize: min(results - 50 * page, 50),
                 archiveStatus: String::from("All"),
-                completionStatus: match self.status {
-                    CompletionStatus::Todo => String::from("Todo"),
-                    CompletionStatus::All => String::from("AllIncludingArchived"),
-                    CompletionStatus::DoneOrArchived => String::from("DoneOrArchived"),
-                },
-                readStatus: match self.read {
-                    ReadStatus::All => String::from("All"),
-                    ReadStatus::OnlyRead => String::from("OnlyRead"),
-                    ReadStatus::OnlyUnread => String::from("OnlyUnread"),
-                },
+                completionStatus: self.status.to_string(),
+                readStatus: self.read.to_string(),
                 markingStatus: String::from("All"),
                 sortingCriteria: vec![Sorting {
-                    column: match self.sorting.0 {
-                        SortBy::DueDate => String::from("DueDate"),
-                        SortBy::SetDate => String::from("SetDate"),
-                    },
-                    order: match self.sorting.1 {
-                        SortOrder::Ascending => String::from("Ascending"),
-                        SortOrder::Descending => String::from("Descending"),
-                    },
+                    column: self.sorting.0.to_string(),
+                    order: self.sorting.1.to_string(),
                 }],
             };
 

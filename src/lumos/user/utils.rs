@@ -1,5 +1,5 @@
-use super::{RawTask, Task, User};
-use crate::models::{NewTask, NewUserPG};
+use super::{AVTask, RawFFTask, User};
+use crate::models::{NewTasksPG, NewUserPG};
 
 use diesel::prelude::*;
 use dotenvy::dotenv;
@@ -77,7 +77,7 @@ pub fn add_user_to_db(instance: &mut User, new_email: &str) {
         .execute(&mut instance.daemon.db)
         .expect("error creating new user");
 
-    let new_task_user_relation = NewTask {
+    let new_task_user_relation = NewTasksPG {
         user_email: new_email,
         firefly_tasks: json!({"empty": true}),
         local_tasks: json!({"empty": true}),
@@ -103,11 +103,11 @@ pub fn update_tasks_db(instance: &mut User) {
 ///
 /// This ensures parity, in format, between tasks that were pulled from Firefly and those that were
 /// created by the user. This allows the frontend to have just one parser for tasks as well.
-pub fn rawtask_to_task(tasks: Vec<RawTask>) -> Option<Vec<Task>> {
+pub fn rawtask_to_task(tasks: Vec<RawFFTask>) -> Option<Vec<AVTask>> {
     let mut standard_tasks = vec![];
     for task in tasks {
         standard_tasks.push({
-            Task {
+            AVTask {
                 due_date: task.due_date?.clone(),
                 is_done: task.is_done?,
                 set_date: task.set_date?.clone(),

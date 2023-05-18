@@ -13,7 +13,7 @@ pub struct Response {
     pub has_values: Option<bool>,
 
     #[serde(rename = "items")]
-    pub items: Option<Vec<RawTask>>,
+    pub items: Option<Vec<RawFFTask>>,
 
     #[serde(rename = "toIndex")]
     pub to_index: Option<i64>,
@@ -35,7 +35,7 @@ pub struct AggregateOffsets {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct RawTask {
+pub struct RawFFTask {
     #[serde(rename = "addressees")]
     pub addressees: Option<Vec<Addressee>>,
 
@@ -104,7 +104,7 @@ pub struct RawTask {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct Task {
+pub struct AVTask {
     pub due_date: String,
     pub is_done: bool,
     pub set_date: String,

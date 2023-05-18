@@ -13,7 +13,7 @@ pub struct UserPG {
 
 #[derive(Queryable)]
 #[diesel(table_name = tasks)]
-pub struct Tasks {
+pub struct TasksPG {
     pub id: i32,
     pub user_email: String,
     pub local_tasks: String,
@@ -30,7 +30,7 @@ pub struct NewUserPG<'a> {
 
 #[derive(Insertable)]
 #[diesel(table_name = tasks)]
-pub struct NewTask<'a> {
+pub struct NewTasksPG<'a> {
     pub user_email: &'a str,
     pub local_tasks: serde_json::Value,
     pub firefly_tasks: serde_json::Value,

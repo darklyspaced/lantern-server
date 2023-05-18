@@ -2,8 +2,8 @@ syntax = "proto3";
 package light;
 
 service Lantern {
-  rpc GetTasks(Filter) returns (Tasks) {}
-  rpc AddTasks(Tasks) returns (StatusCode) {}
+  rpc GetTasks(Filter) returns (PTasks) {}
+  rpc AddTasks(PTasks) returns (StatusCode) {}
 }
 
 message Filter {
@@ -14,7 +14,7 @@ message Filter {
   string source = 5;
 }
 
-message Tasks { string body = 1; }
+message PTasks { string body = 1; }
 
 message StatusCode {
   bool success = 1;

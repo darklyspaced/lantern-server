@@ -1,13 +1,13 @@
 pub mod light {
     tonic::include_proto!("light");
 }
-use super::task::Task;
+use super::task::AVTask;
 use crate::prelude::*;
 
 use anyhow::Result;
 use light::lantern_server::Lantern;
 pub use light::lantern_server::LanternServer;
-use light::{Filter, StatusCode, Tasks};
+use light::{Filter, PTasks, StatusCode};
 use std::str::FromStr;
 use tonic::{Request, Response, Status};
 // use diesel::prelude::*;
@@ -17,7 +17,8 @@ pub struct TaskService; // TODO: allow TaskService to have access to a threadpoo
 
 #[tonic::async_trait]
 impl Lantern for TaskService {
-    async fn get_tasks(&self, request: Request<Filter>) -> Result<Response<Tasks>, Status> {
+    async fn get_tasks(&self, request: Request<Filter>) -> Result<Response<PTasks>, Status> {
+        // TODO: get_tasks should return local_tasks as well
         let filter = construct_filter(request.get_ref());
         let mut user = User::attach("nlcssingapore", "whatever", "sample@email.com")
             .await
@@ -29,12 +30,12 @@ impl Lantern for TaskService {
             panic!("failed to create filter from input");
         }
 
-        Ok(Response::new(Tasks {
+        Ok(Response::new(PTasks {
             body: serde_json::to_string(&user.tasks).unwrap(),
         }))
     }
 
-    async fn add_tasks(&self, request: Request<Tasks>) -> Result<Response<StatusCode>, Status> {
+    async fn add_tasks(&self, request: Request<PTasks>) -> Result<Response<StatusCode>, Status> {
         // use crate::schema::tasks::dsl::*;
 
         // let emails = tasks
@@ -43,8 +44,8 @@ impl Lantern for TaskService {
         //     .expect("Failed to get emails.");
 
         println!("{}", request.get_ref().body);
-        let loc_tasks = serde_json::from_str::<Task>(request.get_ref().body.as_ref());
-        if let Ok(_) = loc_tasks {
+        let loc_tasks = serde_json::from_str::<AVTask>(request.get_ref().body.as_ref());
+        if loc_tasks.is_ok() {
             return Ok(Response::new(StatusCode {
                 success: true,
                 msg: String::from("added task"),
@@ -53,7 +54,7 @@ impl Lantern for TaskService {
             return Ok(Response::new(StatusCode {
                 success: false,
                 msg: String::from(
-                    "failed to serialise task. ensure that task is in corrent format.",
+                    "failed to serialise task. ensure that task is in current format.",
                 ),
             }));
         }
@@ -62,8 +63,8 @@ impl Lantern for TaskService {
 
 fn construct_filter(
     filter: &Filter,
-) -> Result<TaskFilter, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(TaskFilter {
+) -> Result<FFTaskFilter, Box<dyn std::error::Error + Send + Sync>> {
+    Ok(FFTaskFilter {
         source: Some(Source::from_str(filter.source.as_str())?),
         status: CompletionStatus::from_str(filter.status.as_str())?,
         read: ReadStatus::from_str(filter.read.as_str())?,

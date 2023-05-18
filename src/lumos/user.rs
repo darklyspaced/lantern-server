@@ -1,6 +1,5 @@
-use crate::error::LanternError;
-use crate::lumos::filter::TaskFilter;
-use crate::lumos::task::{RawTask, Response, Task};
+use crate::lumos::filter::FFTaskFilter;
+use crate::lumos::task::{AVTask, RawFFTask, Response};
 use crate::models::UserPG;
 use utils::*;
 
@@ -8,6 +7,7 @@ use anyhow::Result;
 use diesel::prelude::*;
 use dotenvy::dotenv;
 use reqwest::Client;
+use std::error::Error;
 use uuid::Uuid;
 
 mod utils;
@@ -15,9 +15,10 @@ mod utils;
 pub struct User {
     pub connection: Info,
     daemon: Daemon,
-    pub tasks: Vec<Task>,
+    pub tasks: Vec<AVTask>,
 }
 
+#[derive(Default)]
 pub struct Info {
     school_code: String,
     device_id: String,
@@ -33,47 +34,46 @@ struct Daemon {
 }
 
 impl<'a> User {
-    /// Authenticates user with Firefly.
+    /// Instansiates a [`User`] that is the channel for commucation with Firefly.
     pub async fn attach(
         school_code: &'a str,
         app_id: &'a str,
         user_email: &'a str,
-    ) -> Result<User, LanternError> {
+    ) -> Result<User, Box<dyn Error>> {
         use crate::schema::users::dsl::*; // imports useful aliases for diesel
-
         dotenv().ok();
-        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
-        let db = PgConnection::establish(&database_url)
-            .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
 
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
+        let db = PgConnection::establish(&database_url) // make this a connection that is derived
+            // from a r2d2::Pool and provided to the struct (in a thread)
+            .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
         let mut user = User {
             daemon: Daemon {
                 http_client: Client::new(),
                 db,
             },
             connection: Info {
-                school_code: String::from(""),
-                app_id: String::from(""),
-                email: String::from(""),
                 device_id: Uuid::new_v4().to_string(),
-                secret: String::from(""),
-                http_endpoint: String::from(""),
+                ..Default::default()
             },
             tasks: vec![],
         };
 
         let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
         let url = reqwest::Url::parse(&(portal + school_code))?;
+        let res = user
+            .daemon
+            .http_client
+            .get(url)
+            .send()
+            .await?
+            .text()
+            .await?;
+        let res = parse_xml(res);
 
-        let response = user.daemon.http_client.get(url).send().await?.text().await;
-        if let Ok(res) = response {
-            let res = parse_xml(res);
-            user.connection.http_endpoint = String::from("https://") + &res[1] + "/";
-            user.connection.school_code = school_code.to_string();
-            user.connection.app_id = app_id.to_string();
-        } else {
-            return Err(LanternError::SchoolCode);
-        };
+        user.connection.http_endpoint = String::from("https://") + &res[1] + "/";
+        user.connection.school_code = school_code.to_string();
+        user.connection.app_id = app_id.to_string();
 
         let emails = users
             .filter(email.eq(user_email))
@@ -120,13 +120,13 @@ impl<'a> User {
     /// }
     /// ```
 
-    pub async fn get_tasks(&mut self, filter: TaskFilter) -> Result<()> {
-        fn standardise_ff_tasks(items: Vec<RawTask>) -> Vec<Task> {
+    pub async fn get_tasks(&mut self, filter: FFTaskFilter) -> Result<()> {
+        fn standardise_ff_tasks(items: Vec<RawFFTask>) -> Vec<AVTask> {
             if let Some(tasks) = rawtask_to_task(items) {
                 tasks
             } else {
                 eprintln!("Error converting RawTask -> Task");
-                vec![Task {
+                vec![AVTask {
                     title: String::from("ERROR 102: RawTask -> Task failed!"),
                     ..Default::default()
                 }]
@@ -196,7 +196,7 @@ impl<'a> User {
                     }
                     false
                 })
-                .collect::<Vec<RawTask>>();
+                .collect::<Vec<RawFFTask>>();
 
             self.tasks = standardise_ff_tasks(parsed_items);
         } else {
