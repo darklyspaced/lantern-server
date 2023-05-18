@@ -73,7 +73,7 @@ impl FFTaskFilter {
     /// for each page) that can then be serialised into a JSON for each request.
     pub fn to_json(&self) -> Vec<JSONFFTaskFilter> {
         let mut filters: Vec<JSONFFTaskFilter> = vec![];
-        let results = 1000;
+        let results = 10000;
         let pages: u32 = (results - 1) / 50;
         for page in 0..pages + 1 {
             let pre_json = JSONFFTaskFilter {

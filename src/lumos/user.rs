@@ -6,6 +6,7 @@ use utils::*;
 use anyhow::Result;
 use diesel::prelude::*;
 use dotenvy::dotenv;
+use rayon::prelude::*;
 use reqwest::Client;
 use std::error::Error;
 use uuid::Uuid;
@@ -91,34 +92,18 @@ impl<'a> User {
         Ok(user)
     }
 
-    /// Gets tasks from Firefly based on authentication done in attach
+    /// Gets tasks from Firefly based on filter provided.
     ///
-    /// This function querys the Firefly API with a POST request to determine how to filter the
-    /// tasks that it returns. You can customise this filter with [`TaskFilter`]. The returned JSON
-    /// is parsed using [`serde_json`] and stored in connection.tasks.
+    /// This function querys the Firefly API with a POST request. The API demands a filter to sort
+    /// the tasks to be sent in the body of the request. This filter is automatically constructed
+    /// from a [`FFTaskFilter`] and passed into the body of the request.
     ///
-    /// ```
-    /// use dotenvy::dotenv;
-    /// use lantern::prelude::*;
+    /// Multiple filters are needed due to the technical limitations of the API. See
+    /// [`to_json`](FFTaskFilter::to_json) for more
+    /// details.
     ///
-    /// fn main() {
-    ///     dotenv().ok();
-    ///     let mut lumos = User::attach("nlcssingapore", "avagarde_client", "sample@email.com").unwrap();
-    ///
-    ///     let filter = TaskFilter {
-    ///         read: ReadStatus::All,
-    ///         status: CompletionStatus::Todo,
-    ///         sorting: (SortBy::DueDate, Order::Ascending),
-    ///         source: Some(Source::Ff),
-    ///     };
-    ///
-    ///     lumos
-    ///         .get_tasks(filter)
-    ///         .unwrap_or_else(|err| panic!("Failed with {}", err));
-    ///
-    ///     println!("{:?}", lumos.tasks);
-    /// }
-    /// ```
+    /// # Examples
+    /// DO THIS
 
     pub async fn get_tasks(&mut self, filter: FFTaskFilter) -> Result<()> {
         fn standardise_ff_tasks(items: Vec<RawFFTask>) -> Vec<AVTask> {
@@ -142,49 +127,75 @@ impl<'a> User {
                 + "api/v2/taskListing/view/student/tasks/all/filterBy"),
             params,
         )?;
-
         let filters = filter.to_json();
-        let mut res = self
-            .daemon
-            .http_client
-            .post(url)
-            .json(&filters[0])
-            .send()
-            .await?
-            .text()
-            .await?;
+        let mut items = vec![];
+        let (mut prev_index, mut curr_index) = ([0; 3], [0; 3]);
+        let mut handles = vec![];
 
-        if res == "Invalid token" {
-            auth(self).await;
-            use crate::schema::users::dsl::*;
-            let params = [
-                ("ffauth_device_id", &self.connection.device_id),
-                ("ffauth_secret", &self.connection.secret),
-            ];
-            let url = reqwest::Url::parse_with_params(
-                &(self.connection.http_endpoint.to_string()
-                    + "api/v2/taskListing/view/student/tasks/all/filterBy"),
-                params,
-            )?;
+        for filter in filters {
+            let url = url.clone();
+            let client = self.daemon.http_client.clone();
+            let handle = tokio::spawn(async move {
+                let res = client
+                    .post(url.clone())
+                    .json(&filter)
+                    .send()
+                    .await
+                    .unwrap()
+                    .text()
+                    .await
+                    .unwrap();
+                let serialised_response = serde_json::from_str::<Response>(&res).unwrap();
+                let agg_offset = serialised_response.aggregate_offsets.unwrap();
+                if let Some(gc_index) = agg_offset.to_gc_index {
+                    curr_index = [agg_offset.to_ff_index.unwrap(), gc_index, 0];
+                }
+                serialised_response.items.unwrap()
+                // check condition and break outer loop
+            });
+            handles.push(handle);
 
-            res = self
-                .daemon
-                .http_client
-                .post(url)
-                .json(&filters[0])
-                .send()
-                .await?
-                .text()
-                .await?;
-
-            diesel::update(users)
-                .filter(email.eq(&self.connection.email))
-                .set(firefly_secret.eq(&self.connection.secret))
-                .execute(&mut self.daemon.db)?;
+            if prev_index == curr_index {
+                break;
+            } else {
+                prev_index = curr_index;
+            }
         }
 
-        let serialised_response: Response = serde_json::from_str(&res).unwrap();
-        let items = serialised_response.items.unwrap();
+        for handle in handles {
+            items.extend(handle.await.unwrap());
+        }
+
+        // TODO: fix secret invalidation with all filters now being used
+
+        // if res == "Invalid token" {
+        //     auth(self).await;
+        //     use crate::schema::users::dsl::*;
+        //     let params = [
+        //         ("ffauth_device_id", &self.connection.device_id),
+        //         ("ffauth_secret", &self.connection.secret),
+        //     ];
+        //     let url = reqwest::Url::parse_with_params(
+        //         &(self.connection.http_endpoint.to_string()
+        //             + "api/v2/taskListing/view/student/tasks/all/filterBy"),
+        //         params,
+        //     )?;
+        //
+        //     res = self
+        //         .daemon
+        //         .http_client
+        //         .post(url)
+        //         .json(&filters[0])
+        //         .send()
+        //         .await?
+        //         .text()
+        //         .await?;
+        //
+        //     diesel::update(users)
+        //         .filter(email.eq(&self.connection.email))
+        //         .set(firefly_secret.eq(&self.connection.secret))
+        //         .execute(&mut self.daemon.db)?;
+        // }
 
         if let Some(ref source) = filter.source {
             let parsed_items = items
@@ -202,7 +213,7 @@ impl<'a> User {
         } else {
             self.tasks = standardise_ff_tasks(items);
         }
-        update_tasks_db(self);
+        // update_tasks_db(self); commented out because there is no point rn :)
         Ok(())
     }
 }
