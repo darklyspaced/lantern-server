@@ -121,15 +121,12 @@ impl<'a> User {
             ("ffauth_device_id", &self.connection.device_id),
             ("ffauth_secret", &self.connection.secret),
         ];
-        println!("{}", self.connection.secret);
-        println!("{}", self.connection.device_id);
         let url = reqwest::Url::parse_with_params(
             &(self.connection.http_endpoint.to_string()
                 + "api/v2/taskListing/view/student/tasks/all/filterBy"),
             params,
         )?;
         let mut items = vec![];
-        let (mut prev_index, mut curr_index) = ([0; 3], [0; 3]);
         let res = filter
             .to_json(self.daemon.http_client.clone(), url.clone())
             .await;
@@ -150,25 +147,13 @@ impl<'a> User {
                         .text()
                         .await
                         .unwrap();
-                    let serialised_response = serde_json::from_str::<Response>(&res).unwrap();
-                    println!("{:#?}", serialised_response.aggregate_offsets);
-                    if let Some(agg_offset) = serialised_response.aggregate_offsets {
-                        if let Some(gc_index) = agg_offset.to_gc_index {
-                            curr_index = [agg_offset.to_ff_index.unwrap(), gc_index, 0];
-                        }
-                    }
 
+                    let serialised_response = serde_json::from_str::<Response>(&res).unwrap();
                     items.extend(serialised_response.items.unwrap());
-                    if prev_index == curr_index {
-                        break;
-                    } else {
-                        prev_index = curr_index;
-                    }
                 }
             }
             (None, Some(res)) => {
                 items = res.items.unwrap();
-                println!("{:#?}", res.aggregate_offsets);
             }
             _ => eprintln!("failed to retrieve tasks"),
         };
