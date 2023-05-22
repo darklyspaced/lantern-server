@@ -1,3 +1,4 @@
+use crate::lumos::task::Response;
 use serde::{Deserialize, Serialize};
 use std::cmp::min;
 use std::string::ToString;
@@ -49,13 +50,13 @@ pub struct FFTaskFilter {
     pub source: Option<Source>,       // Google Classroom or Firefly; sometimes not present -_-
 }
 
-#[derive(serde::Serialize, Deserialize)]
+#[derive(serde::Serialize, Deserialize, Debug)]
 struct Sorting {
     column: String,
     order: String,
 }
 
-#[derive(serde::Serialize, Deserialize)]
+#[derive(serde::Serialize, Deserialize, Debug)]
 #[allow(non_snake_case)]
 pub struct JSONFFTaskFilter {
     ownerType: String,
@@ -71,27 +72,71 @@ pub struct JSONFFTaskFilter {
 impl FFTaskFilter {
     /// Converts the more ergonomic [`FFTaskFilter`] to a `Vec<JSONTaskFilter>` a vector of filters (one
     /// for each page) that can then be serialised into a JSON for each request.
-    pub fn to_json(&self) -> Vec<JSONFFTaskFilter> {
-        let mut filters: Vec<JSONFFTaskFilter> = vec![];
-        let results = 10000;
-        let pages: u32 = (results - 1) / 50;
-        for page in 0..pages + 1 {
-            let pre_json = JSONFFTaskFilter {
-                ownerType: String::from("OnlySetters"),
-                page,
-                pageSize: min(results - 50 * page, 50),
-                archiveStatus: String::from("All"),
-                completionStatus: self.status.to_string(),
-                readStatus: self.read.to_string(),
-                markingStatus: String::from("All"),
-                sortingCriteria: vec![Sorting {
-                    column: self.sorting.0.to_string(),
-                    order: self.sorting.1.to_string(),
-                }],
-            };
+    ///
+    /// The API allows you to list a maximum of 100 tasks per request so requesting more tasks than
+    /// that would require splitting it up into multiple requests and appending to `filters`
+    pub async fn to_json(
+        &self,
+        client: reqwest::Client,
+        url: reqwest::Url,
+    ) -> (Option<Vec<JSONFFTaskFilter>>, Option<Response>) {
+        let pre_filter = JSONFFTaskFilter {
+            ownerType: String::from("OnlySetters"),
+            page: 0,
+            pageSize: 100, // max 100 per request (API limitation)
+            archiveStatus: String::from("All"),
+            completionStatus: self.status.to_string(),
+            readStatus: self.read.to_string(),
+            markingStatus: String::from("All"),
+            sortingCriteria: vec![Sorting {
+                column: self.sorting.0.to_string(),
+                order: self.sorting.1.to_string(),
+            }],
+        };
+        let res = client
+            .post(url.clone())
+            .json(&pre_filter)
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        let ser_res = serde_json::from_str::<Response>(&res).unwrap();
 
-            filters.push(pre_json);
+        if let Some(count) = ser_res.total_count {
+            let count = count as u32;
+            println!("count: {count}");
+
+            if count > 100 {
+                let mut filters: Vec<JSONFFTaskFilter> = vec![];
+                let pages = (count - 1) / 100; // 0 is valid, so no need to ceil (303 / 100 = 9 [0, 1, 2, 3])
+
+                for page in 1..=pages {
+                    let pre_json = JSONFFTaskFilter {
+                        ownerType: String::from("OnlySetters"),
+                        page,
+                        pageSize: 100,
+                        // pageSize: min(count - 100 * page, 100), (breaks cause god knows why)
+                        archiveStatus: String::from("All"),
+                        completionStatus: self.status.to_string(),
+                        readStatus: self.read.to_string(),
+                        markingStatus: String::from("All"),
+                        sortingCriteria: vec![Sorting {
+                            column: self.sorting.0.to_string(),
+                            order: self.sorting.1.to_string(),
+                        }],
+                    };
+
+                    filters.push(pre_json);
+                }
+                (Some(filters), Some(ser_res))
+            } else {
+                (None, Some(ser_res))
+            }
+        } else {
+            eprintln!("total count is not present: probably bad response");
+            (None, None)
         }
-        filters
     }
 }
