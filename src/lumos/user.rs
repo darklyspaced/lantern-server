@@ -6,7 +6,6 @@ use utils::*;
 use anyhow::Result;
 use diesel::prelude::*;
 use dotenvy::dotenv;
-use rayon::prelude::*;
 use reqwest::Client;
 use std::error::Error;
 use uuid::Uuid;
@@ -122,49 +121,78 @@ impl<'a> User {
             ("ffauth_device_id", &self.connection.device_id),
             ("ffauth_secret", &self.connection.secret),
         ];
+        println!("{}", self.connection.secret);
+        println!("{}", self.connection.device_id);
         let url = reqwest::Url::parse_with_params(
             &(self.connection.http_endpoint.to_string()
                 + "api/v2/taskListing/view/student/tasks/all/filterBy"),
             params,
         )?;
-        let filters = filter.to_json();
         let mut items = vec![];
         let (mut prev_index, mut curr_index) = ([0; 3], [0; 3]);
-        let mut handles = vec![];
+        let res = filter
+            .to_json(self.daemon.http_client.clone(), url.clone())
+            .await;
 
-        for filter in filters {
-            let url = url.clone();
-            let client = self.daemon.http_client.clone();
-            let handle = tokio::spawn(async move {
-                let res = client
-                    .post(url.clone())
-                    .json(&filter)
-                    .send()
-                    .await
-                    .unwrap()
-                    .text()
-                    .await
-                    .unwrap();
-                let serialised_response = serde_json::from_str::<Response>(&res).unwrap();
-                let agg_offset = serialised_response.aggregate_offsets.unwrap();
-                if let Some(gc_index) = agg_offset.to_gc_index {
-                    curr_index = [agg_offset.to_ff_index.unwrap(), gc_index, 0];
+        match res {
+            (Some(filters), Some(res)) => {
+                items.extend(res.items.unwrap());
+                for filter in filters {
+                    println!("{:#?}", filter);
+                    let url = url.clone();
+                    let client = self.daemon.http_client.clone();
+                    let res = client
+                        .post(url.clone())
+                        .json(&filter)
+                        .send()
+                        .await
+                        .unwrap()
+                        .text()
+                        .await
+                        .unwrap();
+                    let serialised_response = serde_json::from_str::<Response>(&res).unwrap();
+                    println!("{:#?}", serialised_response.aggregate_offsets);
+                    if let Some(agg_offset) = serialised_response.aggregate_offsets {
+                        if let Some(gc_index) = agg_offset.to_gc_index {
+                            curr_index = [agg_offset.to_ff_index.unwrap(), gc_index, 0];
+                        }
+                    }
+
+                    items.extend(serialised_response.items.unwrap());
+                    if prev_index == curr_index {
+                        break;
+                    } else {
+                        prev_index = curr_index;
+                    }
                 }
-                serialised_response.items.unwrap()
-                // check condition and break outer loop
-            });
-            handles.push(handle);
-
-            if prev_index == curr_index {
-                break;
-            } else {
-                prev_index = curr_index;
             }
+            (None, Some(res)) => {
+                items = res.items.unwrap();
+                println!("{:#?}", res.aggregate_offsets);
+            }
+            _ => eprintln!("failed to retrieve tasks"),
+        };
+
+        if let Some(ref source) = filter.source {
+            let parsed_items = items
+                .into_iter()
+                .filter(|item| {
+                    let curr_source = item.task_source.as_ref().unwrap();
+                    if source == curr_source {
+                        return true;
+                    }
+                    false
+                })
+                .collect::<Vec<RawFFTask>>();
+
+            self.tasks = standardise_ff_tasks(parsed_items);
+        } else {
+            self.tasks = standardise_ff_tasks(items);
         }
 
-        for handle in handles {
-            items.extend(handle.await.unwrap());
-        }
+        // for handle in handles {
+        //     items.extend(handle.await.unwrap());
+        // }
 
         // TODO: fix secret invalidation with all filters now being used
 
@@ -197,22 +225,6 @@ impl<'a> User {
         //         .execute(&mut self.daemon.db)?;
         // }
 
-        if let Some(ref source) = filter.source {
-            let parsed_items = items
-                .into_iter()
-                .filter(|item| {
-                    let curr_source = item.task_source.as_ref().unwrap();
-                    if source == curr_source {
-                        return true;
-                    }
-                    false
-                })
-                .collect::<Vec<RawFFTask>>();
-
-            self.tasks = standardise_ff_tasks(parsed_items);
-        } else {
-            self.tasks = standardise_ff_tasks(items);
-        }
         // update_tasks_db(self); commented out because there is no point rn :)
         Ok(())
     }
