@@ -106,7 +106,6 @@ impl FFTaskFilter {
 
         if let Some(count) = ser_res.total_count {
             let count = count as u32;
-            println!("count: {count}");
 
             if count > 100 {
                 let mut filters: Vec<JSONFFTaskFilter> = vec![];

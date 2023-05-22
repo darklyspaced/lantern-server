@@ -105,6 +105,17 @@ impl<'a> User {
     /// DO THIS
 
     pub async fn get_tasks(&mut self, filter: FFTaskFilter) -> Result<()> {
+        // TODO: check last time since retrieved tasks:
+        // if it has been shorter than a day, then just get the x most recent tasks (determined by
+        // user setting)
+        // if it has be a month since the last fresh 'install', get it all in the background and
+        // refresh the cache
+
+        // BUG: Idk how to check when firefly updates its tasks so it might be annoying to update
+        // so often; need to figure out some sort of polling mechanism
+        //
+        // HACK: Potentially make the RPC return a stream so that it can return the first one
+        // immeadiately, and then the rest after
         fn standardise_ff_tasks(items: Vec<RawFFTask>) -> Vec<AVTask> {
             if let Some(tasks) = rawtask_to_task(items) {
                 tasks
@@ -130,26 +141,36 @@ impl<'a> User {
         let res = filter
             .to_json(self.daemon.http_client.clone(), url.clone())
             .await;
+        let mut handles;
 
         match res {
             (Some(filters), Some(res)) => {
                 items.extend(res.items.unwrap());
+                handles = Vec::with_capacity(filters.len() + 1);
+
                 for filter in filters {
-                    println!("{:#?}", filter);
                     let url = url.clone();
                     let client = self.daemon.http_client.clone();
-                    let res = client
-                        .post(url.clone())
-                        .json(&filter)
-                        .send()
-                        .await
-                        .unwrap()
-                        .text()
-                        .await
-                        .unwrap();
+                    handles.push(tokio::spawn(async move {
+                        let res = client
+                            .post(url.clone())
+                            .json(&filter)
+                            .send()
+                            .await
+                            .unwrap()
+                            .text()
+                            .await
+                            .unwrap();
 
-                    let serialised_response = serde_json::from_str::<Response>(&res).unwrap();
-                    items.extend(serialised_response.items.unwrap());
+                        serde_json::from_str::<Response>(&res)
+                            .unwrap()
+                            .items
+                            .unwrap()
+                    }));
+                }
+
+                for handle in handles {
+                    items.extend(handle.await.unwrap());
                 }
             }
             (None, Some(res)) => {
@@ -174,10 +195,6 @@ impl<'a> User {
         } else {
             self.tasks = standardise_ff_tasks(items);
         }
-
-        // for handle in handles {
-        //     items.extend(handle.await.unwrap());
-        // }
 
         // TODO: fix secret invalidation with all filters now being used
 
