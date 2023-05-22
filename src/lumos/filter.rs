@@ -113,11 +113,11 @@ impl FFTaskFilter {
                 let pages = (count - 1) / 100; // 0 is valid, so no need to ceil (303 / 100 = 9 [0, 1, 2, 3])
 
                 for page in 1..=pages {
-                    println!("{}", min(count - 100 * page, 100));
                     let pre_json = JSONFFTaskFilter {
                         ownerType: String::from("OnlySetters"),
                         page,
-                        pageSize: min(count - 100 * page, 100), // max 100 per request (API limitation)
+                        pageSize: 100,
+                        // pageSize: min(count - 100 * page, 100), (breaks cause god knows why)
                         archiveStatus: String::from("All"),
                         completionStatus: self.status.to_string(),
                         readStatus: self.read.to_string(),
