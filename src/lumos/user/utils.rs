@@ -25,7 +25,9 @@ pub fn parse_xml(response: String) -> Vec<String> {
 }
 
 pub async fn auth(instance: &mut User) {
+    use crate::schema::users::dsl::*;
     dotenv().ok();
+
     let params = [
         ("ffauth_device_id", &instance.connection.device_id),
         ("ffauth_secret", &String::from("")),
@@ -44,7 +46,8 @@ pub async fn auth(instance: &mut User) {
         .get(url)
         .header(
             header::COOKIE,
-            header::HeaderValue::from_static("ASP.NET_SessionId=hpk3341e5kkmcay2smayowxv"),
+            header::HeaderValue::from_static("ASP.NET_SessionId=2fkcirvf3envmu40d14fpc12"),
+            // HACK: need to make this not hard-coded
         )
         .send()
         .await
@@ -57,8 +60,13 @@ pub async fn auth(instance: &mut User) {
     if let Some(secret) = txt.first() {
         if secret != "Invalid token" {
             instance.connection.secret = secret.to_string();
+            diesel::update(users)
+                .filter(email.eq(&instance.connection.email))
+                .set(firefly_secret.eq(secret))
+                .execute(&mut instance.daemon.db)
+                .unwrap();
         } else {
-            panic!("Invalide SessionID!")
+            panic!("invalid sessionid!")
         }
     };
 }
@@ -102,7 +110,7 @@ pub fn update_tasks_db(instance: &mut User) {
 /// more condensed, and relevant format.
 ///
 /// This ensures parity, in format, between tasks that were pulled from Firefly and those that were
-/// created by the user. This allows the frontend to have just one parser for tasks as well.
+/// created by the user. Allows the frontend to have just one parser for tasks.
 pub fn rawtask_to_task(tasks: Vec<RawFFTask>) -> Option<Vec<AVTask>> {
     let mut standard_tasks = vec![];
     for task in tasks {

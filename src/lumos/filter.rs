@@ -1,9 +1,12 @@
-use crate::lumos::task::Response;
+use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::cmp::min;
+use std::fmt::format;
 use std::string::ToString;
 use strum::EnumString;
 use strum_macros::Display;
+
+use super::error::FireflyError;
+use super::task::Response;
 
 #[derive(Debug, PartialEq, EnumString, Display)]
 pub enum CompletionStatus {
@@ -70,16 +73,15 @@ pub struct JSONFFTaskFilter {
 }
 
 impl FFTaskFilter {
-    /// Converts the more ergonomic [`FFTaskFilter`] to a `Vec<JSONTaskFilter>` a vector of filters (one
-    /// for each page) that can then be serialised into a JSON for each request.
+    /// Converts the more ergonomic [`FFTaskFilter`] to a `Vec<JSONTaskFilter>` a vector of filters
     ///
-    /// The API allows you to list a maximum of 100 tasks per request so requesting more tasks than
-    /// that would require splitting it up into multiple requests and appending to `filters`
+    /// The Firefly API allows you to get a maximum of 100 tasks per request; a vector of filters
+    /// must be created when the number of tasks being requested exceeds 100.
     pub async fn to_json(
         &self,
         client: reqwest::Client,
         url: reqwest::Url,
-    ) -> (Option<Vec<JSONFFTaskFilter>>, Option<Response>) {
+    ) -> Result<(Option<Vec<JSONFFTaskFilter>>, Option<Response>), FireflyError> {
         let pre_filter = JSONFFTaskFilter {
             ownerType: String::from("OnlySetters"),
             page: 0,
@@ -97,19 +99,31 @@ impl FFTaskFilter {
             .post(url.clone())
             .json(&pre_filter)
             .send()
-            .await
-            .unwrap()
+            .await?
             .text()
-            .await
-            .unwrap();
-        let ser_res = serde_json::from_str::<Response>(&res).unwrap();
+            .await?;
 
-        if let Some(count) = ser_res.total_count {
-            let count = count as u32;
+        if res == "Invalid token" {
+            return Err(FireflyError::InvalidSecret.into());
+        }
 
-            if count > 100 {
+        let ser_res = serde_json::from_str::<Response>(&res);
+
+        let ser_res = if let Ok(res) = ser_res {
+            res
+        } else {
+            return Err(FireflyError::Misc(format!(
+                "malformed response, failed to parse: {}",
+                res
+            )));
+        };
+
+        if let Some(total_tasks) = ser_res.total_count {
+            let total_tasks = total_tasks as u32;
+
+            if total_tasks > 100 {
                 let mut filters: Vec<JSONFFTaskFilter> = vec![];
-                let pages = (count - 1) / 100; // 0 is valid, so no need to ceil (303 / 100 = 9 [0, 1, 2, 3])
+                let pages = (total_tasks - 1) / 100; // 0 is valid, so no need to ceil (303 / 100 = 3 [0, 1, 2, 3])
 
                 for page in 1..=pages {
                     let pre_json = JSONFFTaskFilter {
@@ -129,13 +143,15 @@ impl FFTaskFilter {
 
                     filters.push(pre_json);
                 }
-                (Some(filters), Some(ser_res))
+                Ok((Some(filters), Some(ser_res)))
             } else {
-                (None, Some(ser_res))
+                Ok((None, Some(ser_res)))
             }
         } else {
-            eprintln!("total count is not present: probably bad response");
-            (None, None)
+            Err(FireflyError::Misc(format!(
+                "malformed response, total_count not present: {}",
+                res
+            )))
         }
     }
 }

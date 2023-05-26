@@ -1,16 +1,17 @@
+use crate::lumos::error::FireflyError;
 use crate::lumos::filter::FFTaskFilter;
 use crate::lumos::task::{AVTask, RawFFTask, Response};
 use crate::models::UserPG;
 use utils::*;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use diesel::prelude::*;
 use dotenvy::dotenv;
 use reqwest::Client;
 use std::error::Error;
 use uuid::Uuid;
 
-mod utils;
+pub mod utils;
 
 pub struct User {
     pub connection: Info,
@@ -81,6 +82,7 @@ impl<'a> User {
             .expect("Failed to get emails.");
 
         if emails.is_empty() {
+            auth(&mut user).await;
             add_user_to_db(&mut user, user_email);
         } else {
             let data = emails.first().unwrap();
@@ -93,17 +95,17 @@ impl<'a> User {
 
     /// Gets tasks from Firefly based on filter provided.
     ///
-    /// This function querys the Firefly API with a POST request. The API demands a filter to sort
-    /// the tasks to be sent in the body of the request. This filter is automatically constructed
-    /// from a [`FFTaskFilter`] and passed into the body of the request.
+    /// This function querys the Firefly API with a POST request. The Firefly API demands a filter to sort
+    /// the tasks; sent in the body of the POST request. [`FFTaskFilter`] functions as an
+    /// abstraction over this filter (which itself constructed in this function).
     ///
-    /// Multiple filters are needed due to the technical limitations of the API. See
-    /// [`to_json`](FFTaskFilter::to_json) for more
-    /// details.
+    /// Multiple filters are needed (when more than 100 tasks are being requested) due to technical
+    /// limiations with the API. See [`to_json`](FFTaskFilter::to_json) for more details.
+    ///
+    /// TALK ABOUT THE THREAD SPAWNING ETC
     ///
     /// # Examples
     /// DO THIS
-
     pub async fn get_tasks(&mut self, filter: FFTaskFilter) -> Result<()> {
         // TODO: check last time since retrieved tasks:
         // if it has been shorter than a day, then just get the x most recent tasks (determined by
@@ -113,7 +115,7 @@ impl<'a> User {
 
         // BUG: Idk how to check when firefly updates its tasks so it might be annoying to update
         // so often; need to figure out some sort of polling mechanism
-        //
+
         // HACK: Potentially make the RPC return a stream so that it can return the first one
         // immeadiately, and then the rest after
         fn standardise_ff_tasks(items: Vec<RawFFTask>) -> Vec<AVTask> {
@@ -142,6 +144,32 @@ impl<'a> User {
             .to_json(self.daemon.http_client.clone(), url.clone())
             .await;
         let mut handles;
+
+        let res = match res {
+            Ok(tuple) => tuple,
+            Err(e) => match e {
+                FireflyError::InvalidSecret => {
+                    auth(self).await;
+                    let params = [
+                        ("ffauth_device_id", &self.connection.device_id),
+                        ("ffauth_secret", &self.connection.secret),
+                    ];
+                    let url = reqwest::Url::parse_with_params(
+                        &(self.connection.http_endpoint.to_string()
+                            + "api/v2/taskListing/view/student/tasks/all/filterBy"),
+                        params,
+                    )?;
+
+                    filter
+                        .to_json(self.daemon.http_client.clone(), url)
+                        .await
+                        .context("failed while getting filter after refreshing secret")
+                        .unwrap() // HACK: can still crash :(
+                }
+                FireflyError::HTTP(e) => panic!("{e}"),
+                FireflyError::Misc(e) => panic!("{e}"), // HACK: remove panics
+            },
+        };
 
         match res {
             (Some(filters), Some(res)) => {
@@ -176,7 +204,7 @@ impl<'a> User {
             (None, Some(res)) => {
                 items = res.items.unwrap();
             }
-            _ => eprintln!("failed to retrieve tasks"),
+            _ => {}
         };
 
         if let Some(ref source) = filter.source {
@@ -195,37 +223,6 @@ impl<'a> User {
         } else {
             self.tasks = standardise_ff_tasks(items);
         }
-
-        // TODO: fix secret invalidation with all filters now being used
-
-        // if res == "Invalid token" {
-        //     auth(self).await;
-        //     use crate::schema::users::dsl::*;
-        //     let params = [
-        //         ("ffauth_device_id", &self.connection.device_id),
-        //         ("ffauth_secret", &self.connection.secret),
-        //     ];
-        //     let url = reqwest::Url::parse_with_params(
-        //         &(self.connection.http_endpoint.to_string()
-        //             + "api/v2/taskListing/view/student/tasks/all/filterBy"),
-        //         params,
-        //     )?;
-        //
-        //     res = self
-        //         .daemon
-        //         .http_client
-        //         .post(url)
-        //         .json(&filters[0])
-        //         .send()
-        //         .await?
-        //         .text()
-        //         .await?;
-        //
-        //     diesel::update(users)
-        //         .filter(email.eq(&self.connection.email))
-        //         .set(firefly_secret.eq(&self.connection.secret))
-        //         .execute(&mut self.daemon.db)?;
-        // }
 
         // update_tasks_db(self); commented out because there is no point rn :)
         Ok(())
