@@ -6,6 +6,7 @@ use utils::*;
 
 use anyhow::{Context, Result};
 use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool};
 use dotenvy::dotenv;
 use reqwest::Client;
 use std::error::Error;
@@ -15,7 +16,8 @@ pub mod utils;
 
 pub struct User {
     pub connection: Info,
-    daemon: Daemon,
+    http_client: Client,
+    db_conn: Pool<ConnectionManager<PgConnection>>,
     pub tasks: Vec<AVTask>,
 }
 
@@ -29,11 +31,6 @@ pub struct Info {
     secret: String,
 }
 
-struct Daemon {
-    http_client: Client,
-    db: PgConnection,
-}
-
 impl<'a> User {
     /// Instansiates a [`User`] that is the channel for commucation with Firefly.
     pub async fn attach(
@@ -44,32 +41,29 @@ impl<'a> User {
         use crate::schema::users::dsl::*; // imports useful aliases for diesel
         dotenv().ok();
 
-        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
-        let db = PgConnection::establish(&database_url) // make this a connection that is derived
-            // from a r2d2::Pool and provided to the struct (in a thread)
-            .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+        let db_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set!");
+        let manager = ConnectionManager::<PgConnection>::new(db_url);
+        let pool = Pool::builder()
+            .test_on_check_out(true)
+            .build(manager)
+            .expect("Could not build connection pool");
+
+        // let db = PgConnection::establish(&database_url) // potentially add pooling
+        //     .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
+
         let mut user = User {
-            daemon: Daemon {
-                http_client: Client::new(),
-                db,
-            },
             connection: Info {
                 device_id: Uuid::new_v4().to_string(),
                 ..Default::default()
             },
             tasks: vec![],
+            http_client: Client::new(),
+            db_conn: pool.clone(),
         };
 
         let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
         let url = reqwest::Url::parse(&(portal + school_code))?;
-        let res = user
-            .daemon
-            .http_client
-            .get(url)
-            .send()
-            .await?
-            .text()
-            .await?;
+        let res = user.http_client.get(url).send().await?.text().await?;
         let res = parse_xml(res);
 
         user.connection.http_endpoint = String::from("https://") + &res[1] + "/";
@@ -78,8 +72,8 @@ impl<'a> User {
 
         let emails = users
             .filter(email.eq(user_email))
-            .load::<UserPG>(&mut user.daemon.db)
-            .expect("Failed to get emails.");
+            .load::<UserPG>(&mut (pool.clone().get().unwrap()))
+            .expect("failed to get emails.");
 
         if emails.is_empty() {
             auth(&mut user).await;
@@ -106,7 +100,7 @@ impl<'a> User {
     ///
     /// # Examples
     /// DO THIS
-    pub async fn get_tasks(&mut self, filter: FFTaskFilter) -> Result<()> {
+    pub async fn get_ff_tasks(&mut self, filter: FFTaskFilter) -> Result<()> {
         // TODO: check last time since retrieved tasks:
         // if it has been shorter than a day, then just get the x most recent tasks (determined by
         // user setting)
@@ -140,9 +134,7 @@ impl<'a> User {
             params,
         )?;
         let mut items = vec![];
-        let res = filter
-            .to_json(self.daemon.http_client.clone(), url.clone())
-            .await;
+        let res = filter.to_json(self.http_client.clone(), url.clone()).await;
         let mut handles;
 
         let res = match res {
@@ -161,7 +153,7 @@ impl<'a> User {
                     )?;
 
                     filter
-                        .to_json(self.daemon.http_client.clone(), url)
+                        .to_json(self.http_client.clone(), url)
                         .await
                         .context("failed while getting filter after refreshing secret")
                         .unwrap() // HACK: can still crash :(
@@ -178,7 +170,7 @@ impl<'a> User {
 
                 for filter in filters {
                     let url = url.clone();
-                    let client = self.daemon.http_client.clone();
+                    let client = self.http_client.clone();
                     handles.push(tokio::spawn(async move {
                         let res = client
                             .post(url.clone())

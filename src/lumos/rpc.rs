@@ -2,6 +2,7 @@ pub mod light {
     tonic::include_proto!("light");
 }
 use super::task::AVTask;
+use super::user::User;
 use crate::prelude::*;
 
 use anyhow::Result;
@@ -9,23 +10,22 @@ use light::lantern_server::Lantern;
 pub use light::lantern_server::LanternServer;
 use light::{Filter, PTasks, StatusCode};
 use std::str::FromStr;
+use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
-// use diesel::prelude::*;
 
-#[derive(Default)]
-pub struct TaskService; // TODO: allow TaskService to have access to a threadpool for db connection
+pub struct TaskService {
+    inner: Mutex<User>,
+}
 
 #[tonic::async_trait]
 impl Lantern for TaskService {
     async fn get_tasks(&self, request: Request<Filter>) -> Result<Response<PTasks>, Status> {
         // TODO: get_tasks should return local_tasks as well
         let filter = construct_filter(request.get_ref());
-        let mut user = User::attach("nlcssingapore", "whatever", "sample@email.com")
-            .await
-            .unwrap();
+        let mut user = self.inner.lock().await;
 
         if let Ok(filter) = filter {
-            user.get_tasks(filter).await.unwrap();
+            user.get_ff_tasks(filter).await.unwrap();
         } else {
             panic!("failed to create filter from input");
         }
@@ -57,6 +57,17 @@ impl Lantern for TaskService {
                     "failed to serialise task. ensure that task is in current format.",
                 ),
             }));
+        }
+    }
+}
+
+impl TaskService {
+    pub async fn new() -> Self {
+        let user = User::attach("nlcssingapore", "avagarde", "sample@email.com")
+            .await
+            .unwrap();
+        TaskService {
+            inner: Mutex::new(user),
         }
     }
 }

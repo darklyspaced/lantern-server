@@ -28,6 +28,7 @@ pub async fn auth(instance: &mut User) {
     use crate::schema::users::dsl::*;
     dotenv().ok();
 
+    let mut db_conn = instance.db_conn.clone().get().unwrap();
     let params = [
         ("ffauth_device_id", &instance.connection.device_id),
         ("ffauth_secret", &String::from("")),
@@ -41,7 +42,6 @@ pub async fn auth(instance: &mut User) {
     .unwrap();
 
     let res = instance
-        .daemon
         .http_client
         .get(url)
         .header(
@@ -63,7 +63,7 @@ pub async fn auth(instance: &mut User) {
             diesel::update(users)
                 .filter(email.eq(&instance.connection.email))
                 .set(firefly_secret.eq(secret))
-                .execute(&mut instance.daemon.db)
+                .execute(&mut db_conn)
                 .unwrap();
         } else {
             panic!("invalid sessionid!")
@@ -75,6 +75,7 @@ pub fn add_user_to_db(instance: &mut User, new_email: &str) {
     use crate::schema::tasks;
     use crate::schema::users;
 
+    let mut db_conn = instance.db_conn.clone().get().unwrap();
     let new_user = NewUserPG {
         email: new_email,
         firefly_secret: &instance.connection.secret,
@@ -82,7 +83,7 @@ pub fn add_user_to_db(instance: &mut User, new_email: &str) {
     };
     diesel::insert_into(users::table)
         .values(&new_user)
-        .execute(&mut instance.daemon.db)
+        .execute(&mut db_conn)
         .expect("error creating new user");
 
     let new_task_user_relation = NewTasksPG {
@@ -92,17 +93,17 @@ pub fn add_user_to_db(instance: &mut User, new_email: &str) {
     };
     diesel::insert_into(tasks::table)
         .values(&new_task_user_relation)
-        .execute(&mut instance.daemon.db)
+        .execute(&mut db_conn)
         .expect("error create task-user relation");
 }
 
-pub fn update_tasks_db(instance: &mut User) {
+pub fn update_tasks_db(instance: &mut User, conn: &mut PgConnection) {
     use crate::schema::tasks::dsl::*;
 
     diesel::update(tasks)
         .filter(user_email.eq(&instance.connection.email))
         .set(firefly_tasks.eq::<serde_json::Value>(serde_json::to_value(&instance.tasks).unwrap()))
-        .execute(&mut instance.daemon.db)
+        .execute(conn)
         .unwrap();
 }
 
@@ -116,10 +117,10 @@ pub fn rawtask_to_task(tasks: Vec<RawFFTask>) -> Option<Vec<AVTask>> {
     for task in tasks {
         standard_tasks.push({
             AVTask {
-                due_date: task.due_date?.clone(),
+                due_date: task.due_date?,
                 is_done: task.is_done?,
-                set_date: task.set_date?.clone(),
-                title: task.title?.clone(),
+                set_date: task.set_date?,
+                title: task.title?,
                 id: {
                     if let Some(id) = task.id {
                         id.parse::<usize>().unwrap()
