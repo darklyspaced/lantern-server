@@ -109,6 +109,8 @@ pub struct AVTask {
     pub is_done: bool,
     pub set_date: String,
     pub title: String,
+    pub setter_key: String,
+    pub setter_name: String,
     pub id: usize,
 }
 

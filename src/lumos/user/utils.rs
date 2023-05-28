@@ -115,6 +115,7 @@ pub fn update_tasks_db(instance: &mut User, conn: &mut PgConnection) {
 pub fn rawtask_to_task(tasks: Vec<RawFFTask>) -> Option<Vec<AVTask>> {
     let mut standard_tasks = vec![];
     for task in tasks {
+        let setter = task.setter?;
         standard_tasks.push({
             AVTask {
                 due_date: task.due_date?,
@@ -128,6 +129,8 @@ pub fn rawtask_to_task(tasks: Vec<RawFFTask>) -> Option<Vec<AVTask>> {
                         0
                     }
                 },
+                setter_key: (&setter.guid?).to_owned(), // this or guid. not sure
+                setter_name: (&setter.name?).to_owned(),
             }
         })
     }

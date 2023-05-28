@@ -34,6 +34,3 @@ thiserror = "1.0.40"
 
 [build-dependencies]
 tonic-build = "0.9.1"
-
-[profile.release]
-debug = true
