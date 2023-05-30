@@ -103,7 +103,7 @@ pub struct RawFFTask {
     pub title: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct AVTask {
     pub due_date: String,
     pub is_done: bool,

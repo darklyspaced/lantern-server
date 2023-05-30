@@ -17,7 +17,7 @@ pub mod utils;
 pub struct User {
     pub connection: Info,
     http_client: Client,
-    db_conn: Pool<ConnectionManager<PgConnection>>,
+    pub db_conn: Pool<ConnectionManager<PgConnection>>,
     pub tasks: Vec<AVTask>,
 }
 
@@ -26,7 +26,7 @@ pub struct Info {
     school_code: String,
     device_id: String,
     app_id: String,
-    email: String,
+    pub email: String,
     http_endpoint: String,
     secret: String,
 }
@@ -47,9 +47,6 @@ impl<'a> User {
             .test_on_check_out(true)
             .build(manager)
             .expect("Could not build connection pool");
-
-        // let db = PgConnection::establish(&database_url) // potentially add pooling
-        //     .unwrap_or_else(|_| panic!("Error connecting to {}", database_url));
 
         let mut user = User {
             connection: Info {
@@ -216,7 +213,7 @@ impl<'a> User {
             self.tasks = standardise_ff_tasks(items);
         }
 
-        // update_tasks_db(self); commented out because there is no point rn :)
+        update_tasks_db(self);
         Ok(())
     }
 }

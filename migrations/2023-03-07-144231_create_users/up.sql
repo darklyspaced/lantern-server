@@ -10,6 +10,6 @@ CREATE TABLE IF NOT EXISTS tasks (
 	user_email VARCHAR UNIQUE NOT NULL,
   	CONSTRAINT fk_email
     	FOREIGN KEY (user_email) REFERENCES users(email),
-    local_tasks JSON NOT NULL,
-    firefly_tasks JSON NOT NULL
+    local_tasks JSONB NOT NULL,
+    firefly_tasks JSONB NOT NULL
 );

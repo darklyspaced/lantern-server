@@ -29,6 +29,8 @@ pub async fn auth(instance: &mut User) {
     dotenv().ok();
 
     let mut db_conn = instance.db_conn.clone().get().unwrap();
+    let session_id = "ooxspo3hjzi0osdppg1i1jrq";
+    let cookie = format!("ASP.NET_SessionId={}", session_id);
     let params = [
         ("ffauth_device_id", &instance.connection.device_id),
         ("ffauth_secret", &String::from("")),
@@ -46,7 +48,7 @@ pub async fn auth(instance: &mut User) {
         .get(url)
         .header(
             header::COOKIE,
-            header::HeaderValue::from_static("ASP.NET_SessionId=2fkcirvf3envmu40d14fpc12"),
+            header::HeaderValue::from_str(&cookie).unwrap(),
             // HACK: need to make this not hard-coded
         )
         .send()
@@ -89,7 +91,7 @@ pub fn add_user_to_db(instance: &mut User, new_email: &str) {
     let new_task_user_relation = NewTasksPG {
         user_email: new_email,
         firefly_tasks: json!({"empty": true}),
-        local_tasks: json!({"empty": true}),
+        local_tasks: json!([{"due_date":"2023","is_done":false,"set_date":"2022","title":"finish this","id":100,"setter_key":"self","setter_name":"rohan"}]),
     };
     diesel::insert_into(tasks::table)
         .values(&new_task_user_relation)
@@ -97,13 +99,15 @@ pub fn add_user_to_db(instance: &mut User, new_email: &str) {
         .expect("error create task-user relation");
 }
 
-pub fn update_tasks_db(instance: &mut User, conn: &mut PgConnection) {
+pub fn update_tasks_db(instance: &mut User) {
     use crate::schema::tasks::dsl::*;
+
+    let mut db_conn = instance.db_conn.clone().get().unwrap();
 
     diesel::update(tasks)
         .filter(user_email.eq(&instance.connection.email))
         .set(firefly_tasks.eq::<serde_json::Value>(serde_json::to_value(&instance.tasks).unwrap()))
-        .execute(conn)
+        .execute(&mut db_conn)
         .unwrap();
 }
 

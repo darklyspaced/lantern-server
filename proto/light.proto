@@ -16,7 +16,4 @@ message Filter {
 
 message PTasks { string body = 1; }
 
-message StatusCode {
-  bool success = 1;
-  string msg = 2;
-}
+message StatusCode { bool success = 1; }

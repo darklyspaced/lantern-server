@@ -1,6 +1,8 @@
 use super::schema::tasks;
 use super::schema::users;
 use diesel::prelude::*;
+use serde::Serialize;
+use serde_json;
 
 #[derive(Queryable)]
 #[diesel(table_name = users)]
@@ -11,13 +13,13 @@ pub struct UserPG {
     pub device_id: String,
 }
 
-#[derive(Queryable)]
+#[derive(Queryable, Serialize, serde::Deserialize, Debug)]
 #[diesel(table_name = tasks)]
 pub struct TasksPG {
     pub id: i32,
     pub user_email: String,
-    pub local_tasks: String,
-    pub firefly_tasks: String,
+    pub local_tasks: serde_json::Value,
+    pub firefly_tasks: serde_json::Value,
 }
 
 #[derive(Insertable)]
