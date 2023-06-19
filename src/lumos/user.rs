@@ -1,15 +1,16 @@
-use crate::lumos::error::FireflyError;
-use crate::lumos::filter::FFTaskFilter;
-use crate::lumos::task::{AVTask, RawFFTask, Response};
+use crate::lumos::{
+    error::FireflyError,
+    filter::FFTaskFilter,
+    task::{AVTask, RawFFTask, Response},
+};
 use crate::models::UserPG;
 use utils::*;
 
-use anyhow::{Context, Result};
+use color_eyre::{eyre::Context, Result};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
 use dotenvy::dotenv;
 use reqwest::Client;
-use std::error::Error;
 use uuid::Uuid;
 
 pub mod utils;
@@ -31,13 +32,9 @@ pub struct Info {
     secret: String,
 }
 
-impl<'a> User {
+impl User {
     /// Instansiates a [`User`] that is the channel for commucation with Firefly.
-    pub async fn attach(
-        school_code: &'a str,
-        app_id: &'a str,
-        user_email: &'a str,
-    ) -> Result<User, Box<dyn Error>> {
+    pub async fn attach(school_code: &str, app_id: &str, user_email: &str) -> Result<User> {
         use crate::schema::users::dsl::*; // imports useful aliases for diesel
         dotenv().ok();
 
@@ -46,16 +43,16 @@ impl<'a> User {
         let pool = Pool::builder()
             .test_on_check_out(true)
             .build(manager)
-            .expect("Could not build connection pool");
+            .wrap_err("Could not build connection pool")?;
 
         let mut user = User {
             connection: Info {
                 device_id: Uuid::new_v4().to_string(),
                 ..Default::default()
             },
-            tasks: vec![],
             http_client: Client::new(),
             db_conn: pool.clone(),
+            tasks: Vec::new(),
         };
 
         let portal = String::from("https://appgateway.fireflysolutions.co.uk/appgateway/school/");
@@ -70,7 +67,7 @@ impl<'a> User {
         let emails = users
             .filter(email.eq(user_email))
             .load::<UserPG>(&mut (pool.clone().get().unwrap()))
-            .expect("failed to get emails.");
+            .wrap_err("failed to get emails.")?;
 
         if emails.is_empty() {
             auth(&mut user).await;
@@ -100,15 +97,13 @@ impl<'a> User {
     pub async fn get_ff_tasks(&mut self, filter: FFTaskFilter) -> Result<()> {
         // TODO: check last time since retrieved tasks:
         // if it has been shorter than a day, then just get the x most recent tasks (determined by
-        // user setting)
-        // if it has be a month since the last fresh 'install', get it all in the background and
+        // user setting) if it has be a month since the last fresh 'install', get it all in the background and
         // refresh the cache
 
         // BUG: Idk how to check when firefly updates its tasks so it might be annoying to update
         // so often; need to figure out some sort of polling mechanism
 
-        // HACK: Potentially make the RPC return a stream so that it can return the first one
-        // immeadiately, and then the rest after
+        // TODO: change this to return an option that is destructed and returns a proper error
         fn standardise_ff_tasks(items: Vec<RawFFTask>) -> Vec<AVTask> {
             if let Some(tasks) = rawtask_to_task(items) {
                 tasks
@@ -152,7 +147,7 @@ impl<'a> User {
                     filter
                         .to_json(self.http_client.clone(), url)
                         .await
-                        .context("failed while getting filter after refreshing secret")
+                        .wrap_err("failed while getting filter after refreshing secret")
                         .unwrap() // HACK: can still crash :(
                 }
                 FireflyError::HTTP(e) => panic!("{e}"),
@@ -187,7 +182,7 @@ impl<'a> User {
                 }
 
                 for handle in handles {
-                    items.extend(handle.await.unwrap());
+                    items.extend(handle.await?);
                 }
             }
             (None, Some(res)) => {

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use color_eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::string::ToString;
 use strum::EnumString;

@@ -29,7 +29,7 @@ pub async fn auth(instance: &mut User) {
     dotenv().ok();
 
     let mut db_conn = instance.db_conn.clone().get().unwrap();
-    let session_id = "ooxspo3hjzi0osdppg1i1jrq";
+    let session_id = "tujzxgnptjqdve3ligzuiwyn";
     let cookie = format!("ASP.NET_SessionId={}", session_id);
     let params = [
         ("ffauth_device_id", &instance.connection.device_id),
@@ -68,7 +68,7 @@ pub async fn auth(instance: &mut User) {
                 .execute(&mut db_conn)
                 .unwrap();
         } else {
-            panic!("invalid sessionid!")
+            panic!("invalid sessionid")
         }
     };
 }

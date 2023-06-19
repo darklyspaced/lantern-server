@@ -6,7 +6,7 @@ use super::user::User;
 use crate::models::TasksPG;
 use crate::prelude::*;
 
-use anyhow::Result;
+use color_eyre::Result;
 use diesel::prelude::*;
 use light::lantern_server::Lantern;
 pub use light::lantern_server::LanternServer;
@@ -35,15 +35,13 @@ impl Lantern for TaskService {
             .expect("failed to get local tasks")[0];
         let loc_tasks = serde_json::from_value::<Vec<AVTask>>(loc_tasks.local_tasks.clone());
 
-        if let Ok(l_tasks) = loc_tasks {
-            all_tasks.extend(l_tasks);
-        } else {
-            return Err(Status::new(Code::Unknown, "failed to retrieve local tasks"));
+        match loc_tasks {
+            Ok(t) => all_tasks.extend(t),
+            _ => return Err(Status::new(Code::Unknown, "failed to retrieve local tasks")),
         }
-        if let Ok(filter) = filter {
-            user.get_ff_tasks(filter).await.unwrap();
-        } else {
-            return Err(Status::new(Code::InvalidArgument, "filter is malformed"));
+        match filter {
+            Ok(f) => user.get_ff_tasks(f).await.unwrap(),
+            _ => return Err(Status::new(Code::Unknown, "filter is malformed")),
         }
 
         all_tasks.extend(user.tasks.clone());
