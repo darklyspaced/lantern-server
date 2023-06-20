@@ -1,3 +1,4 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
