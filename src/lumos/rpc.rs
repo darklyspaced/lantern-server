@@ -37,7 +37,10 @@ impl Lantern for TaskService {
 
         match loc_tasks {
             Ok(t) => all_tasks.extend(t),
-            _ => return Err(Status::new(Code::Unknown, "failed to retrieve local tasks")),
+            Err(e) => {
+                eprintln!("failed while retrieving local tasks with {}", e);
+                return Err(Status::new(Code::Unknown, "failed to retrieve local tasks"));
+            }
         }
         match filter {
             Ok(f) => user.get_ff_tasks(f).await.unwrap(),

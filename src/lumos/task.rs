@@ -112,6 +112,22 @@ pub struct AVTask {
     pub setter_key: String,
     pub setter_name: String,
     pub id: usize,
+    pub tags: Vec<Tag>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub enum Tag {
+    Source {
+        source: String,
+    },
+    DueDate {
+        date: String,
+    },
+    Priority {
+        priority: String,
+    },
+    #[default]
+    Error,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

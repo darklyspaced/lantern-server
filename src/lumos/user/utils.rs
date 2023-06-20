@@ -1,4 +1,5 @@
 use super::{AVTask, RawFFTask, User};
+use crate::lumos::task::Tag;
 use crate::models::{NewTasksPG, NewUserPG};
 
 use diesel::prelude::*;
@@ -91,7 +92,7 @@ pub fn add_user_to_db(instance: &mut User, new_email: &str) {
     let new_task_user_relation = NewTasksPG {
         user_email: new_email,
         firefly_tasks: json!({"empty": true}),
-        local_tasks: json!([{"due_date":"2023","is_done":false,"set_date":"2022","title":"finish this","id":100,"setter_key":"self","setter_name":"rohan"}]),
+        local_tasks: json!([{"due_date":"2023","is_done":false,"set_date":"2022","title":"finish this","id":100,"setter_key":"self","setter_name":"rohan","tags":[]}]),
     };
     diesel::insert_into(tasks::table)
         .values(&new_task_user_relation)
@@ -111,7 +112,7 @@ pub fn update_tasks_db(instance: &mut User) {
         .unwrap();
 }
 
-/// Converts the serialised response [`RawTask`], that is received from Firefly, into [`Task`]. A
+/// Converts the serialised response [`RawFFTask`], that is received from Firefly, into [`AVTask`]. A
 /// more condensed, and relevant format.
 ///
 /// This ensures parity, in format, between tasks that were pulled from Firefly and those that were
@@ -120,9 +121,10 @@ pub fn rawtask_to_task(tasks: Vec<RawFFTask>) -> Option<Vec<AVTask>> {
     let mut standard_tasks = vec![];
     for task in tasks {
         let setter = task.setter?;
+        let due_date = task.due_date?;
         standard_tasks.push({
             AVTask {
-                due_date: task.due_date?,
+                due_date: (&due_date).to_owned(),
                 is_done: task.is_done?,
                 set_date: task.set_date?,
                 title: task.title?,
@@ -135,6 +137,14 @@ pub fn rawtask_to_task(tasks: Vec<RawFFTask>) -> Option<Vec<AVTask>> {
                 },
                 setter_key: (&setter.guid?).to_owned(), // this or guid. not sure
                 setter_name: (&setter.name?).to_owned(),
+                tags: vec![
+                    Tag::Source {
+                        source: "FF".into(),
+                    },
+                    Tag::DueDate {
+                        date: (&due_date).to_owned(),
+                    },
+                ],
             }
         })
     }
