@@ -48,6 +48,7 @@ impl Lantern for TaskService {
         }
 
         all_tasks.extend(user.tasks.clone());
+        println!("{}", serde_json::to_string_pretty(&all_tasks).unwrap());
         Ok(Response::new(PTasks {
             body: serde_json::to_string(&all_tasks).unwrap(),
         }))

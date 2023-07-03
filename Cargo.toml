@@ -12,8 +12,6 @@ futures-core = "0.3"
 futures-util = "0.3"
 quick-xml = "0.28.1"
 reqwest = { version = "0.11.14", features = ["cookies", "blocking", "json"] }
-serde = "1.0.152"
-serde_json = "1.0.93"
 diesel = { version = "2.0.3", features = [
     "postgres_backend",
     "postgres",
@@ -32,6 +30,8 @@ thiserror = "1.0.40"
 axum = "0.6.18"
 color-eyre = "0.6.2"
 tonic-web = "0.9.2"
+serde = { version = "1.0.164", features = ["derive", "serde_derive"] }
+serde_json = "1.0.99"
 
 [build-dependencies]
 tonic-build = "0.9.1"
